@@ -1,0 +1,25 @@
+polaris (Xiaomi Mi MIX 2S): 让 WCN3990 跳过 host capability QMI 请求
+
+polaris 上的 WCN3990 固件不支持 host capability QMI 请求，直接回
+QMI_ERR_MALFORMED_MSG_V01，ath10k_snoc 打印：
+
+    ath10k_snoc 18800000.wifi: host capability request rejected: 1
+
+因为该请求发生在下载固件/板卡数据之前，驱动会在这里就中止初始化，WiFi
+完全起不来。上游为此引入了 DT 怪癖 qcom,snoc-host-cap-skip-quirk，并已在
+beryllium、judyln 上使用；polaris 的 WCN3990 属于同一批固件，补上同样的
+quirk 即可（本设备的 board-2.bin 只有 qmi-board-id 条目，没有 variant，
+因此不需要 qcom,calibration-variant）。
+
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+@@ -709,8 +709,9 @@
+ &wifi {
+ 	vdd-0.8-cx-mx-supply = <&vreg_l5a_0p8>;
+ 	vdd-1.8-xo-supply = <&vreg_l7a_1p8>;
+ 	vdd-1.3-rfa-supply = <&vreg_l17a_1p3>;
+ 	vdd-3.3-ch0-supply = <&vreg_l25a_3p3>;
+ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
++	qcom,snoc-host-cap-skip-quirk;
+ 	status = "okay";
+ };

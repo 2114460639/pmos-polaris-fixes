@@ -1,0 +1,32 @@
+polaris (Xiaomi Mi MIX 2S): 启用 PMI8998 充电器与电量计，修复电池恒显 0%
+
+polaris 的 DTS 从未覆盖 pmi8998_charger / pmi8998_fg，而这两个节点在
+pmi8998.dtsi 里默认 status = "disabled"，于是系统里根本没有 battery 类型的
+power_supply 设备，UPower/phosh 只能显示 0%。
+
+同内核的 beryllium 电池正常，正是因为它在 DTS 里显式启用了这两个节点并接上
+simple-battery（polaris 的 battery 节点已经存在，只差这个引用）。驱动现成，
+无需改动驱动代码：qcom_smbb.o（CONFIG_CHARGER_QCOM_SMBB）管充电器，
+pmi8998_fg.o（CONFIG_BATTERY_PMI8998_FG）管电量计。
+
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+@@ -511,5 +511,18 @@
+ };
+ 
++&pmi8998_charger {
++	monitored-battery = <&battery>;
++
++	status = "okay";
++};
++
++&pmi8998_fg {
++	power-supplies = <&pmi8998_charger>;
++	monitored-battery = <&battery>;
++
++	status = "okay";
++};
++
+ &pmi8998_wled {
+ 	qcom,current-limit-microamp = <20000>;
+ 	qcom,current-boost-limit = <970>;
