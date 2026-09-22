@@ -142,11 +142,7 @@ ls -l /lib/firmware/qcom/sdm845/Xiaomi/polaris/a630_zap.mbn   # 14256 字节，�
 pmbootstrap shutdown
 ```
 
-## 三、分区表（仅首次刷机需要）
-
-MIX 2S 原厂 `userdata` 仅约 2.5 GiB，装不下 rootfs。需先用 Mindows Toolbox 恢复/重建 Android 分区表，把 userdata 扩展到约 53.5 GiB，再执行第 5 步（rootfs 写入 userdata 分区）。
-
-## 四、踩过的坑
+## 三、踩过的坑
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
