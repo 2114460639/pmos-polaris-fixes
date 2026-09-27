@@ -1,0 +1,13 @@
+--- a/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:34:33.358145531 +0800
++++ b/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:34:33.362145531 +0800
+@@ -1059,9 +1059,7 @@
+ 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
+ 	if (ret) {
+ 		slim_free_txn_tid(ctrl, &txn);
+-		dev_err(&sdev->dev, "TX timed out:MC:0x%x,mt:0x%x", txn.mc,
+-				txn.mt);
+-		return ret;
++		dev_warn(&sdev->dev, "DEF_ACT_CHAN failed %d, continuing with reconfig\n", ret);
+ 	}
+ 
+ 	txn.mc = SLIM_USR_MC_RECONFIG_NOW;

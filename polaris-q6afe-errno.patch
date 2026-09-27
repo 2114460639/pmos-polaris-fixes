@@ -1,0 +1,11 @@
+--- a/sound/soc/qcom/qdsp6/q6afe.c	2026-09-26 21:58:35.398179138 +0800
++++ b/sound/soc/qcom/qdsp6/q6afe.c	2026-09-26 21:58:35.402179138 +0800
+@@ -1103,7 +1103,7 @@
+ 	} else if (result->status > 0) {
+ 		dev_err(afe->dev, "DSP returned error[%x]\n",
+ 			result->status);
+-		ret = -EINVAL;
++		ret = -result->status;
+ 	} else {
+ 		ret = 0;
+ 	}

@@ -1,0 +1,22 @@
+--- a/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.402179138 +0800
++++ b/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.406179138 +0800
+@@ -15,6 +15,7 @@
+ #include "q6dsp-lpass-ports.h"
+ #include "q6dsp-common.h"
+ #include "q6afe.h"
++#include "q6dsp-errno.h"
+ 
+ 
+ struct q6afe_dai_priv_data {
+@@ -440,6 +441,11 @@
+ 
+ 	rc = q6afe_port_start(dai_data->port[dai->id]);
+ 	if (rc < 0) {
++		if (rc == -ADSP_EALREADY) {
++		        /* SLIM ports may already be running on the ADSP; treat as started. */
++		        dai_data->is_port_started[dai->id] = true;
++		        return 0;
++		}
+ 		dev_err(dai->dev, "fail to start AFE port %x\n", dai->id);
+ 		return rc;
+ 	}

@@ -1,0 +1,148 @@
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts.bak	2026-09-26 06:09:10.128057782 +0800
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts	2026-09-26 06:44:30.984045404 +0800
+@@ -714,3 +714,145 @@
+ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
+ 	status = "okay";
+ };
++
++/* Audio: enable ADSP, sound card, WCD9340 codec, TAS2559/60 amplifiers */
++&adsp_pas {
++	status = "okay";
++	firmware-name = "qcom/sdm845/polaris/adsp.mbn";
++};
++
++&sound {
++	compatible = "qcom,db845c-sndcard", "qcom,sdm845-sndcard";
++	pinctrl-0 = <&quat_mi2s_active
++			&quat_mi2s_sd0_active>;
++	pinctrl-names = "default";
++	model = "Xiaomi Mi MIX 2S";
++	audio-routing =
++		"RX_BIAS", "MCLK",
++		"AMIC1", "MIC BIAS1",
++		"AMIC2", "MIC BIAS2",
++		"AMIC3", "MIC BIAS3";
++
++	mm1-dai-link {
++		link-name = "MultiMedia1";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
++		};
++	};
++	mm2-dai-link {
++		link-name = "MultiMedia2";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
++		};
++	};
++	mm3-dai-link {
++		link-name = "MultiMedia3";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA3>;
++		};
++	};
++	mm4-dai-link {
++		link-name = "MultiMedia4";
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA4>;
++		};
++	};
++	tas2559-dai-link {
++		link-name = "Primary Spkr Playback";
++		cpu {
++			sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
++		};
++		platform {
++			sound-dai = <&q6routing>;
++		};
++		codec {
++			sound-dai = <&tas2559_codec 0>;
++		};
++	};
++	slim-dai-link {
++		link-name = "SLIM Playback";
++		cpu {
++			sound-dai = <&q6afedai SLIMBUS_0_RX>;
++		};
++		platform {
++			sound-dai = <&q6routing>;
++		};
++		codec {
++			sound-dai = <&wcd9340 0>;
++		};
++	};
++	slimcap-dai-link {
++		link-name = "SLIM WCD Capture";
++		cpu {
++			sound-dai = <&q6afedai SLIMBUS_0_TX>;
++		};
++		platform {
++			sound-dai = <&q6routing>;
++		};
++		codec {
++			sound-dai = <&wcd9340 1>; /* AIF1_CAP */
++		};
++	};
++	slimcap2-dai-link {
++		link-name = "SLIM WCD Capture 2";
++		cpu {
++			sound-dai = <&q6afedai SLIMBUS_1_TX>;
++		};
++		platform {
++			sound-dai = <&q6routing>;
++		};
++		codec {
++			sound-dai = <&wcd9340 3>; /* AIF2_CAP */
++		};
++	};
++};
++
++&i2c5 {
++	status = "okay";
++	tas2559_codec: tas2559@4c {
++		#sound-dai-cells = <1>;
++		compatible = "ti,tas2559";
++		reg = <0x4c>;
++		ti,tas2559-reset-gpio = <&tlmm 14 0>;
++		ti,tas2560-reset-gpio = <&tlmm 25 0>;
++		ti,tas2559-addr = <0x4c>;
++		ti,tas2560-addr = <0x4d>;
++		ti,tas2559-channel = <0>;
++		ti,tas2560-channel = <1>;
++	};
++};
++
++&q6afedai {
++	dai@22 {
++		reg = <QUATERNARY_MI2S_RX>;
++		qcom,sd-lines = <0>;
++	};
++};
++
++&q6asmdai {
++	dai@0 {
++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA1>;
++	};
++	dai@1 {
++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA2>;
++	};
++	dai@2 {
++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA3>;
++	};
++	dai@3 {
++		reg = <3>;
++	};
++};
++
++&wcd9340 {
++	reset-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
++	vdd-buck-supply = <&vreg_s4a_1p8>;
++	vdd-buck-sido-supply = <&vreg_s4a_1p8>;
++	vdd-tx-supply = <&vreg_s4a_1p8>;
++	vdd-rx-supply = <&vreg_s4a_1p8>;
++	vdd-io-supply = <&vreg_s4a_1p8>;
++	qcom,micbias1-microvolt = <2700000>;
++	qcom,micbias2-microvolt = <1800000>;
++	qcom,micbias3-microvolt = <2700000>;
++	qcom,micbias4-microvolt = <2700000>;
++};

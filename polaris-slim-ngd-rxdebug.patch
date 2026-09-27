@@ -1,0 +1,10 @@
+--- /tmp/qcom-ngd-ctrl-r16.c	2026-09-27 00:00:15.326136531 +0800
++++ psrc/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:57:42.118137425 +0800
+@@ -606,6 +606,7 @@
+ 	mt = SLIM_HEADER_GET_MT(buf[0]);
+ 	len = SLIM_HEADER_GET_RL(buf[0]);
+ 	mc = SLIM_HEADER_GET_MC(buf[1]);
++	dev_info(ctrl->dev, "RX msg: mc=0x%x mt=0x%x len=%d\n", mc, mt, len);
+ 
+ 	if (mc == SLIM_USR_MC_MASTER_CAPABILITY &&
+ 		mt == SLIM_MSG_MT_SRC_REFERRED_USER)

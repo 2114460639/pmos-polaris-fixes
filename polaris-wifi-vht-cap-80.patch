@@ -1,0 +1,10 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 23:29:53.054136656 +0800
++++ b/drivers/net/wireless/ath/ath10k/mac.c	2026-09-26 02:39:11.250070362 +0800
+@@ -5033,6 +5033,7 @@
+ 		band->vht_cap = vht_cap;
+                 band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(780);
+                 band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(780);
++                band->vht_cap.cap = cpu_to_le32(0x3381f9b2);
+ 	}
+ }
+ 

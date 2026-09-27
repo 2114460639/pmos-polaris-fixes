@@ -1,0 +1,46 @@
+--- a/sound/soc/soc-pcm.c	2026-09-26 08:28:04.416009138 +0800
++++ b/sound/soc/soc-pcm.c	2026-09-26 08:28:04.420009138 +0800
+@@ -863,21 +863,21 @@
+ 	for_each_rtd_components(rtd, i, component)
+ 		pinctrl_pm_select_default_state(component->dev);
+ 
+-	ret = snd_soc_pcm_component_pm_runtime_get(rtd, substream);
++	ret = snd_soc_pcm_component_pm_runtime_get(rtd, substream); pr_err("DBGSTEP1 pm_get=%d\n", ret);
+ 	if (ret < 0)
+ 		goto err;
+ 
+-	ret = soc_pcm_components_open(substream);
++	ret = soc_pcm_components_open(substream); pr_err("DBGSTEP2 comps=%d\n", ret);
+ 	if (ret < 0)
+ 		goto err;
+ 
+-	ret = snd_soc_link_startup(substream);
++	ret = snd_soc_link_startup(substream); pr_err("DBGSTEP3 link=%d\n", ret);
+ 	if (ret < 0)
+ 		goto err;
+ 
+ 	/* startup the audio subsystem */
+ 	for_each_rtd_dais(rtd, i, dai) {
+-		ret = snd_soc_dai_startup(dai, substream);
++		ret = snd_soc_dai_startup(dai, substream); pr_err("DBGSTEP4 dai_startup=%d\n", ret);
+ 		if (ret < 0)
+ 			goto err;
+ 	}
+@@ -891,7 +891,7 @@
+ 
+ 	soc_pcm_update_symmetry(substream);
+ 
+-	ret = soc_hw_sanity_check(substream);
++	ret = soc_hw_sanity_check(substream); pr_err("DBGSTEP5 sanity=%d\n", ret);
+ 	if (ret < 0)
+ 		goto err;
+ 
+@@ -899,7 +899,7 @@
+ 
+ 	/* Symmetry only applies if we've already got an active stream. */
+ 	for_each_rtd_dais(rtd, i, dai) {
+-		ret = soc_pcm_apply_symmetry(substream, dai);
++		ret = soc_pcm_apply_symmetry(substream, dai); pr_err("DBGSTEP7 symmetry=%d\n", ret);
+ 		if (ret != 0)
+ 			goto err;
+ 	}

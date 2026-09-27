@@ -1,0 +1,24 @@
+--- a/sound/soc/qcom/sdm845.c	2026-09-26 17:09:32.463766116 +0800
++++ b/sound/soc/qcom/sdm845.c	2026-09-26 17:22:41.011761514 +0800
+@@ -289,6 +289,21 @@
+ 		}
+ 		break;
+ 	case SLIMBUS_0_RX...SLIMBUS_6_TX:
++		/* Set the channel map on the cpu DAI for this link, so that
++		 * the AFE SLIM port config gets a valid num_channels. Without
++		 * this ADSP rejects the SET_PARAM during port enable.
++		 */
++		for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
++		        if (cpu_dai->id & 0x1) /* TX */
++		            rval = snd_soc_dai_set_channel_map(cpu_dai,
++		                                              ARRAY_SIZE(tx_ch), tx_ch, 0, NULL);
++		        else /* RX */
++		            rval = snd_soc_dai_set_channel_map(cpu_dai,
++		                                              0, NULL,
++		                                              ARRAY_SIZE(rx_ch), rx_ch);
++		        if (rval != 0 && rval != -ENOTSUPP)
++		            return rval;
++		}
+ 		/* setting up wcd multiple times for slim port is redundant */
+ 		if (pdata->slim_port_setup || !link->no_pcm)
+ 			return 0;

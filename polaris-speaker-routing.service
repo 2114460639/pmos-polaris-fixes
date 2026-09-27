@@ -1,0 +1,9 @@
+[Unit]
+Description=Polaris speaker routing keeper (QUAT_MI2S_RX -> TAS2559, MM1+MM3)
+After=sound.target
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'for i in $(seq 1 100); do [ -e /dev/snd/controlC0 ] && break; sleep 0.2; done; while true; do amixer -c 0 sset "QUAT_MI2S_RX Audio Mixer MultiMedia1" on; amixer -c 0 sset "QUAT_MI2S_RX Audio Mixer MultiMedia3" on; sleep 10; done'
+Restart=always
+[Install]
+WantedBy=multi-user.target

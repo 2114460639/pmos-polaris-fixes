@@ -1,0 +1,76 @@
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+index a44d6e776..2426e195b 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+@@ -714,3 +714,71 @@ &wifi {
+ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
+ 	status = "okay";
+ };
++
++/* Camera: Sony IMX363 rear sensor (main) */
++/ {
++	cam_vdig_rear: regulator-cam-vdig-rear {
++		compatible = "regulator-fixed";
++		regulator-name = "cam_vdig_rear";
++		regulator-min-microvolt = <1050000>;
++		regulator-max-microvolt = <1050000>;
++		regulator-enable-ramp-delay = <135>;
++		enable-active-high;
++		gpio = <&pm8998_gpios 11 GPIO_ACTIVE_HIGH>;
++	};
++};
++
++&camss {
++	status = "okay";
++	ports {
++		port@0 {
++			camss_csi0_ep: endpoint {
++				remote-endpoint = <&imx363_ep>;
++                            data-lanes = <1 2>;
++			};
++		};
++	};
++};
++
++&cci {
++	status = "okay";
++};
++
++&cci_i2c0 {
++	imx363: camera-sensor@10 {
++		compatible = "sony,imx363";
++                reset-gpios = <&tlmm 80 GPIO_ACTIVE_LOW>;
++		reg = <0x10>;
++
++		vana-supply = <&vreg_bob>;
++		vdig-supply = <&cam_vdig_rear>;
++		vif-supply = <&vreg_lvs1a_1p8>;
++
++		clocks = <&clock_camcc CAM_CC_MCLK0_CLK>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam_mclk0_default>;
++		clock-frequency = <24000000>;
++
++		port {
++			imx363_ep: endpoint {
++				remote-endpoint = <&camss_csi0_ep>;
++                            data-lanes = <1 2>;
++                            link-frequencies = /bits/ 64 <636000000>;
++			};
++		};
++	};
++};
++
++&tlmm {
++        cam_mclk0_default: cam-mclk0-default-state {
++                pins = "gpio13";
++                function = "cam_mclk";
++                drive-strength = <2>;
++                bias-disable;
++        };
++        cam_vana_en: cam-vana-en-state {
++                gpio-hog;
++                gpios = <87 0>;
++                output-high;
++        };
++};

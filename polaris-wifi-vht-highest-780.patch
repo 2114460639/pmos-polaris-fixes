@@ -1,0 +1,11 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 20:03:45.406208842 +0800
++++ b/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 20:03:45.414208842 +0800
+@@ -5031,6 +5031,8 @@
+ 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
+ 		band->ht_cap = ht_cap;
+ 		band->vht_cap = vht_cap;
++                band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(780);
++                band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(780);
+ 	}
+ }
+ 
