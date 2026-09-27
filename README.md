@@ -2,7 +2,39 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1.0-rc1（sdm845-mainline/linux）
 - 环境：pmbootstrap 3.11.1，channel `systemd-v26.06`，UI `phosh`
-- 本仓库内容：`pmaports-xiaomi-polaris.patch` —— 改动 pmaports 的 4 个文件；`polaris-camera.patch` —— 摄像头（IMX363 主摄）设备树补丁
+- 本仓库内容：`pmaports-xiaomi-polaris.patch` —— 改动 pmaports 的 4 个文件
+- **验收状态：2026-09-27 全新刷机（fastboot 全量）验证通过** —— 屏幕/触摸正常、GPU 无错、WiFi 5G 866.7Mbps 满速、GUI 音频 + 浏览器网页 mic/扬声器均通过、录音正常、电池 99%。开箱即用达成。
+
+## 〇、功能支持情况（2026-09-27 实测）
+
+| 功能 | 支持情况 | 我们的修复 |
+| --- | --- | --- |
+| Device 设备 | Xiaomi Mi Mix 2S | — |
+| Codename 代号 | xiaomi-polaris | — |
+| Category 类别 | testing | — |
+| Architecture 架构 | aarch64 | — |
+| Released 发布年份 | 2018 | — |
+| USB Net USB 网络 | Y | — |
+| Flashing 刷机 | Y | — |
+| Touch 触控 | P | 验收：全新刷机触摸正常 |
+| Screen 屏幕 | P | ✅ 修复开机黑屏（nt35596s prepare_prev_first 补丁），显示验收通过 |
+| Wifi Wi-Fi | P | ✅ 5GHz 满速 AC 866.7Mbps（VHT cap 0x3381f9b2 + Highest 780 补丁） |
+| FDE 全盘加密 | Y | — |
+| Battery 电池 | P | ✅ 电量计修复（polaris-battery-fg 补丁），显示 99% |
+| 3D 3D 图形 | Y | ✅ GPU 固件 a630_zap 路径修复（dmesg 无 zap/gpu 错误） |
+| IMU 惯性测量单元 | （未测试） | — |
+| Audio 音频 | P | ✅ 无声卡→全自动（DTS 音频节点 + PA/路由固化），GUI+浏览器 mic/扬声器验收通过 |
+| Bluetooth 蓝牙 | Y | — |
+| Camera 摄像头 | N | 🔧 进行中：IMX363 主摄（CCI i2c 0x10 无 ACK，tlmm102 待验证） |
+| GPS | （未测试） | — |
+| Mobile Data 移动数据 | Y | — |
+| SMS 短信 | Y | — |
+| Calls 通话 | P | — |
+| USB-OTG USB OTG | N | — |
+| NFC | （未测试） | — |
+| HDMI/DP | - | — |
+
+状态码：**Y** = 完全可用（Yes, fully implemented）· **P** = 部分可用（Partially implemented）· **N** = 不可用（Not working yet）· **-** = 设备无此功能（Not applicable）· 空 = 未测试（Untested）
 
 ## 一、修的是什么
 
@@ -313,4 +345,4 @@ pmbootstrap shutdown
   - 电源 —— vana=bob / vdig=pm8998 GPIO11(1.05V) / vif=lvs1，与 LineageOS `polaris-camera-sensor-mtp.dtsi` 的 `cam_vana-supply/cam_vdig-supply/cam_vio-supply` 完全一致；
   - CCI 引脚 —— pinmux 已复用 `cci_i2c`（gpio17-20）。
 - 待验证：**tlmm 102（CUSTOM0）** —— LineageOS 主摄 `gpios = <&tlmm 13 0>, <&tlmm 80 0>, <&tlmm 87 0>, <&tlmm 102 0>`，`gpio-custom1 = <3>`，且 `polaris-p0-pinctrl.dtsi` 的 `cam_sensor_rear_active` 把 gpio80/87/102 配为一组（注释 "RESET, AVDD LDO"）。当前 polaris.dts 未配置 tlmm 102（手机端显示 `in low func0`），可能是传感器缺失的使能信号，待补 `gpio-hog` 或 pinctrl 验证。
-- 已知未做：副摄（IMX376）/前摄未启用；fastboot 全量重刷验收未做；开机音乐未实测。
+- 已知未做：副摄（IMX376）/前摄未启用；IMX363 主摄仍在排障（见上）。除摄像头外其余功能已全量验收通过（见仓库顶部"验收状态"）。
