@@ -178,8 +178,7 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 export PATH="$HOME/.local/bin:$PATH"
 pmbootstrap --version          # 3.11.1
 # 需要访问 GitHub 时设代理（按自己环境修改）
-export http_proxy=http://192.168.1.17:7890
-export https_proxy=http://192.168.1.17:7890
+
 ```
 
 ### 1. 初始化（只需一次）
