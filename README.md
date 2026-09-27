@@ -16,11 +16,11 @@
 | Released 发布年份 | 2018 | — |
 | USB Net USB 网络 | Y | — |
 | Flashing 刷机 | Y | — |
-| Touch 触控 | P | 验收：全新刷机触摸正常 |
-| Screen 屏幕 | P | ✅ 修复开机黑屏（nt35596s prepare_prev_first 补丁），显示验收通过 |
-| Wifi Wi-Fi | P | ✅ 5GHz 满速 AC 866.7Mbps（VHT cap 0x3381f9b2 + Highest 780 补丁） |
+| Touch 触控 | P | 全新刷机后触摸正常工作 |
+| Screen 屏幕 | P | ✅ 修复开机黑屏（nt35596s prepare_prev_first 补丁），显示正常正常工作 |
+| Wifi Wi-Fi | P | ✅ 5GHz 满速 AC 866.7Mbps（VHT cap 0x3381f9b2 + Highest 780 补丁）iperf3测速650Mbps左右 |
 | FDE 全盘加密 | Y | — |
-| Battery 电池 | P | ✅ 电量计修复（polaris-battery-fg 补丁），显示 99% |
+| Battery 电池 | P | ✅ 电量计修复（polaris-battery-fg 补丁），实时电量正常 |
 | 3D 3D 图形 | Y | ✅ GPU 固件 a630_zap 路径修复（dmesg 无 zap/gpu 错误） |
 | IMU 惯性测量单元 | （未测试） | — |
 | Audio 音频 | P | ✅ 无声卡→全自动（DTS 音频节点 + PA/路由固化），GUI+浏览器 mic/扬声器验收通过 |
