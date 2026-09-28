@@ -2,8 +2,9 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1.0-rc1（sdm845-mainline/linux）
 - 环境：pmbootstrap 3.11.1，channel `systemd-v26.06`，UI `phosh`
-- 本仓库内容：`pmaports-xiaomi-polaris.patch` —— 改动 pmaports 的 4 个文件
+- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化），另附 `pmaports-xiaomi-polaris.patch`
 - **验收状态：2026-09-27 全新刷机（fastboot 全量）验证通过** —— 屏幕/触摸正常、GPU 无错、WiFi 5G 866.7Mbps 满速、GUI 音频 + 浏览器网页 mic/扬声器均通过、录音正常、电池 99%。开箱即用达成。
+- **摄像头补丁（2026-09-29 验证）**：IMX363 主摄已出图，`polaris-camera.patch` 见「一、3」与「四」。
 
 ## 〇、功能支持情况（2026-09-27 实测）
 
@@ -25,7 +26,7 @@
 | IMU 惯性测量单元 | （未测试） | — |
 | Audio 音频 | P | ✅ 无声卡→全自动（DTS 音频节点 + PA/路由固化），GUI+浏览器 mic/扬声器验收通过 |
 | Bluetooth 蓝牙 | Y | — |
-| Camera 摄像头 | N | 🔧 进行中：IMX363 主摄（CCI i2c 0x10 无 ACK，tlmm102 待验证） |
+| Camera 摄像头 | P | ✅ IMX363 主摄已出图：i2c 0x1a、cam_vio(GPIO21) 1.8V 供电、4-lane；libcamera/v4l2 均验证通过（见 polaris-camera.patch）。遗留：软件 ISP 偏暗、首帧后偶有不来帧（重试即可） |
 | GPS | （未测试） | — |
 | Mobile Data 移动数据 | Y | — |
 | SMS 短信 | Y | — |
@@ -60,78 +61,127 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 修复（改 `firmware-xiaomi-polaris`）：`package()` 中额外把 `a630_zap.mbn` 装到 `qcom/sdm845/Xiaomi/polaris/`，并把该路径加进 `30-gpu-firmware.files`（initramfs 清单），`pkgrel` 0→1。
 > 固件必须进 initramfs：rootfs 里的文件要挂载后才可见，而 GPU 初始化更早。符号链接不可靠，必须真实复制文件。
 
-### 3. 摄像头（Sony IMX363 主摄——进行中）
-症状：`camss` 平台驱动不 probe（dmesg `Unsupported bus type 2`）；IMX363 传感器注册失败（`failed to read chip id 363: -110`）；libcamera `cam --list` 无相机。
-修复（`polaris-camera.patch`）：在 `sdm845-xiaomi-polaris.dts` 追加摄像头节点 + 使能 camss/cci + MCLK pinctrl。当前状态：**camss 已绑定并注册 `/dev/video0-8`**；IMX363 probe 仍卡在 CCI i2c 对 0x10 无 ACK（-110），电源/时钟/地址已逐项对齐 LineageOS，剩余疑点 tlmm 102（CUSTOM0）待验证。
+### 3. 摄像头（Sony IMX363 主摄——已修复，可出图）
+症状：`camss` 平台驱动不 probe（dmesg `Unsupported bus type 2`）；IMX363 传感器注册失败（`failed to read chip id 363: -110`/`-6`）；libcamera `cam --list` 无相机。
+根因（3 个，缺一不可）：
+1. **I2C 地址错**：原补丁写 `reg = <0x10>`，实测 IMX363 在 **`0x1a`**（读 0x0016 得到 0x0363 芯片 ID）。probe 报 `-6`(NACK) 而非 `-110`(timeout) 是定位此问题的决定性信号。
+2. **cam_vio 供电缺失**：量产 polaris 的 CAM_VIO 不是 `pm8998_lvs1`，而是 **`&tlmm 21` 控制的 1.8V 固定稳压器**（vin=pm8998_s4）。缺失时传感器 I2C 域无供电、模块静默不应答。
+3. **lane 数不全**：必须 4-lane（sensor 侧 `data-lanes = <0 1 2 3>`，camss 侧 `clock-lanes = <7>`），并补齐 camss 的 `vdda-phy/pll/csi0-2` 供电。
+修复（`polaris-camera.patch`，含 dts + imx363.c）：新增 `cam_vio_rear`(tlmm21) 稳压器、sensor 改 `reg = <0x1a>`、`vif-supply = <&cam_vio_rear>`、4-lane + link-freq 636MHz、camss 供电与 endpoints。
+**实测结果**：`imx363 16-001a` probe 成功（`pixel_rate: 508800000`，4 lanes），media 拓扑 `imx363 → msm_csiphy0 → msm_csid0 → msm_vfe0_rdi0` 全通；`cam -c1 --capture=12` 稳定 ~30fps 出图（ABGR8888 4024x3024）。
 
-#### 补丁内容（dts 手动追加，或直接应用本目录 `polaris-camera.patch`）
+#### 补丁内容
+
+**权威来源是本目录的 `polaris-camera.patch`**（含 dts + imx363.c，共 156 行）。下方 dts 仅为阅读方便，若与 patch 不一致，以 patch 为准。
+
 ```dts
 /* Camera: Sony IMX363 rear sensor (main) */
 / {
-        cam_vdig_rear: regulator-cam-vdig-rear {
-                compatible = "regulator-fixed";
-                regulator-name = "cam_vdig_rear";
-                regulator-min-microvolt = <1050000>;
-                regulator-max-microvolt = <1050000>;
-                regulator-enable-ramp-delay = <135>;
-                enable-active-high;
-                gpio = <&pm8998_gpios 11 GPIO_ACTIVE_HIGH>;
-        };
+	cam_vio_rear: regulator-cam-vio-rear {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_vio_rear";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-enable-ramp-delay = <135>;
+		enable-active-high;
+		gpio = <&tlmm 21 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vreg_s4a_1p8>;
+	};
+
+	cam_vdig_rear: regulator-cam-vdig-rear {
+		compatible = "regulator-fixed";
+		regulator-name = "cam_vdig_rear";
+		regulator-min-microvolt = <1050000>;
+		regulator-max-microvolt = <1050000>;
+		regulator-enable-ramp-delay = <135>;
+		enable-active-high;
+		gpio = <&pm8998_gpios 11 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pm8998_gpio11_default>;
+	};
 };
+
 &camss {
-        status = "okay";
-        ports {
-                port@0 {
-                        camss_csi0_ep: endpoint {
-                                remote-endpoint = <&imx363_ep>;
-                                data-lanes = <1 2>;
-                        };
-                };
-        };
+	vdda-phy-supply = <&vreg_l1a_0p875>;
+	vdda-pll-supply = <&vreg_l26a_1p2>;
+	vdda-csi0-supply = <&vreg_l1a_0p875>;
+	vdda-csi1-supply = <&vreg_l1a_0p875>;
+	vdda-csi2-supply = <&vreg_l1a_0p875>;
+
+	status = "okay";
+	ports {
+		port@0 {
+			camss_csi0_ep: endpoint {
+				remote-endpoint = <&imx363_ep>;
+				clock-lanes = <7>;
+				data-lanes = <0 1 2 3>;
+			};
+		};
+	};
 };
+
 &cci {
-        status = "okay";
+	status = "okay";
 };
+
 &cci_i2c0 {
-        imx363: camera-sensor@10 {
-                compatible = "sony,imx363";
-                reset-gpios = <&tlmm 80 GPIO_ACTIVE_LOW>;
-                reg = <0x10>;
-                vana-supply = <&vreg_bob>;
-                vdig-supply = <&cam_vdig_rear>;
-                vif-supply = <&vreg_lvs1a_1p8>;
-                pinctrl-names = "default";
-                pinctrl-0 = <&cam_mclk0_default>;
-                clocks = <&clock_camcc CAM_CC_MCLK0_CLK>;
-                clock-frequency = <24000000>;
-                port {
-                        imx363_ep: endpoint {
-                                remote-endpoint = <&camss_csi0_ep>;
-                                data-lanes = <1 2>;
-                                link-frequencies = /bits/ 64 <636000000>;
-                        };
-                };
-        };
+	clock-frequency = <400000>;
+	imx363: camera-sensor@1a {
+		compatible = "sony,imx363";
+		reset-gpios = <&tlmm 80 GPIO_ACTIVE_LOW>;
+		reg = <0x1a>;
+		status = "okay";
+
+		vana-supply = <&vreg_bob>;
+		vdig-supply = <&cam_vdig_rear>;
+		vif-supply = <&cam_vio_rear>;
+
+		clocks = <&clock_camcc CAM_CC_MCLK0_CLK>;
+		clock-names = "xvclk";
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam0_default &cam_mclk0_default>;
+		clock-frequency = <24000000>;
+
+		orientation = <1>;
+		rotation = <90>;
+
+		port {
+			imx363_ep: endpoint {
+				remote-endpoint = <&camss_csi0_ep>;
+				data-lanes = <0 1 2 3>;
+				link-frequencies = /bits/ 64 <636000000>;
+			};
+		};
+	};
 };
+
 &tlmm {
-        cam_mclk0_default: cam-mclk0-default-state {
-                pins = "gpio13";
-                function = "cam_mclk";
-                drive-strength = <2>;
-                bias-disable;
-        };
-        cam_vana_en: cam-vana-en-state {
-                gpio-hog;
-                gpios = <87 0>;
-                output-high;
-        };
+	cam0_default: cam0-default-state {
+		rst {
+			pins = "gpio80";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+	cam_mclk0_default: cam-mclk0-default-state {
+		pins = "gpio13";
+		function = "cam_mclk";
+		drive-strength = <2>;
+		bias-disable;
+	};
 };
 ```
+
 要点：
-- 主摄拓扑（来自 LineageOS `polaris-camera-sensor-mtp.dtsi` 核对）：cci-master0 / csiphy0 / MCLK0=tlmm13 / RESET=tlmm80 / VANA=tlmm87（bob 供电）/ vdig=pm8998 GPIO11（1.05V，vin=pm8998_s3）/ vif=pm8998_lvs1 / i2c 地址 0x10（与 mainline 小米 8 beryllium 同款 IMX363 一致）。
-- `link-frequencies` 必须给 636000000（imx363.c 的 `link_freq_menu_items_24`），否则 probe 报 "Link frequency not supported"。
-- `camss` endpoint 必须带 `data-lanes`，否则 bus_type 解析成非 CSI2 报 `Unsupported bus type 2`。
+- 主摄拓扑（来自 LineageOS `polaris-camera-sensor-mtp.dtsi` 核对）：cci-master0 / csiphy0 / MCLK0=tlmm13 / RESET=tlmm80 / VANA=bob（tlmm87 hog 使能）/ vdig=pm8998 GPIO11（1.05V）/ **vif=cam_vio_rear（tlmm21 控制 1.8V，vin=pm8998_s4）** / **i2c 地址 0x1a**。
+- **I2C 地址必须是 0x1a**（不是 beryllium 那套 0x10）：写错时报 `-6`(NACK)，与供电缺失的 `-110`(timeout) 可区分。
+- `link-frequencies` 必须给 636000000（imx363.c 的 24MHz 时钟配置），否则 probe 报 "Link frequency not supported"。
+- `camss` endpoint 必须带 `data-lanes` + `clock-lanes = <7>`，否则 bus_type 解析成非 CSI2 报 `Unsupported bus type 2`。**sensor 与 camss 两侧 lane 数必须一致且为 4-lane**。
+- `imx363.c` 的 `imx363_power_on()` 时序被调整：regulators → 400µs → **先 `clk_prepare_enable`(MCLK)** → reset assert(1) → 1~2ms → release(0) → 10~20ms。上游原版是 reset 先释放再开时钟，实测不工作时序。
 - MCLK 必须显式 pinctrl（gpio13 `cam_mclk`），否则 MCLK 时钟到不了引脚、传感器不响应。
+
+> **调试提醒**：不要在用 libcamera 之前手动 `media-ctl -V` 改链路格式。相邻 pad 的 mbus code 不一致会让 `media_pipeline_start()` 返回 `-EPIPE`(-32)（dmesg "Failed to start media pipeline: -32"），或启动成功但 0 帧。恢复方式：`sudo modprobe -r imx363 && sudo modprobe imx363`，或在干净状态下直接 `cam -c1 --capture=N --file=/tmp/x.raw`。
 
 ### 4. 音频（无声卡 → GUI 无声 → 全自动——已修复，firmware 包 r15 收官）
 症状：
@@ -207,12 +257,11 @@ install -Dm644 lib/firmware/qcom/sdm845/polaris/a630_zap.mbn \
 
 ### 3. 摄像头补丁
 ```bash
-# 内核源码工作区（sdm845-mainline）里改 dts
-cd /tmp/linux/arch/arm64/boot/dts/qcom
-# 按"一、3"的手动内容追加到 sdm845-xiaomi-polaris.dts（或用本目录 polaris-camera.patch）
-# 生成补丁并拷入包目录
+# 内核源码工作区（sdm845-mainline）里改 dts + imx363.c
+# （本仓库 polaris-camera.patch 即由此工作区生成）
 cd /tmp/linux
-git diff arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts > /tmp/polaris-camera.patch
+git diff arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts \
+         drivers/media/i2c/imx363.c > /tmp/polaris-camera.patch
 cp /tmp/polaris-camera.patch \
   ~/.local/var/pmbootstrap/cache_git/pmaports/device/community/linux-postmarketos-qcom-sdm845/
 # APKBUILD source= 列表追加一行（在 polaris-slim-ngd-msgdbg2.patch 之后）
@@ -299,10 +348,15 @@ ls -l /lib/firmware/qcom/sdm845/Xiaomi/polaris/a630_zap.mbn   # 14256 字节，�
 # 摄像头
 sudo mount -t debugfs none /sys/kernel/debug
 sudo grep -E 'gpio13 ' /sys/kernel/debug/gpio              # 期望：func1 cam_mclk
-ls /sys/bus/i2c/devices/16-0010/driver 2>/dev/null         # 期望：指向 imx363
+ls /sys/bus/i2c/devices/16-001a/driver 2>/dev/null         # 期望：指向 imx363（注意是 0x1a）
+sudo dmesg | grep -i imx363                                # 期望：probe 成功、"4 lanes"
 ls /dev/video* | wc -l                                     # camss 绑定后 9 个节点
+sudo dmesg | grep -iE "Failed to start media pipeline"     # 期望：无输出
+# libcamera 出图（用户实际路径，重启后勿先手动 media-ctl 改格式）
 export XDG_RUNTIME_DIR=/run/user/$(id -u user)
 cam --list                                                 # 期望：列出 IMX363 相机
+cam -c1 --capture=12 --file=/tmp/cam_check.raw             # 期望：12 帧全成功、~30fps
+ls -l /tmp/cam_check.raw                                   # 期望：N × 48771072 字节（4024x3024 ABGR8888）
 ```
 
 ### 7. 收尾
@@ -324,8 +378,11 @@ pmbootstrap shutdown
 | dts 改了但手机不生效 | `git diff` 生成的 patch 没拷进包目录 / checksum 没重跑 | patch 拷入后 `pmbootstrap checksum` 再 build；用 `/sys/firmware/devicetree/base/...` 核对实际 DTB |
 | scp 通配符拖 19 个历史 apk 卡死 | 文件名带版本号累积 | `APK=$(ls -t ... | head -1)` 只取最新 |
 | imx363 `no link frequencies in firmware` | endpoint 缺 `link-frequencies` | 补 `/bits/ 64 <636000000>` |
-| camss `Unsupported bus type 2` | endpoint 缺 `data-lanes`，bus_type 解析失败 | 补 `data-lanes = <1 2>` |
-| imx363 probe `-110`（CCI timeout） | 详见"四、当前卡点" | 逐项核对电源/时钟/地址 |
+| camss `Unsupported bus type 2` | endpoint 缺 `data-lanes`，bus_type 解析失败 | 补 `data-lanes = <0 1 2 3>` + `clock-lanes = <7>` |
+| imx363 probe `-6`（CCI NACK） | I2C 地址写错（沿用 beryllium 的 0x10），实际是 **0x1a** | dts 改 `reg = <0x1a>` |
+| imx363 probe `-110`（CCI timeout） | 传感器无供电（CAM_VIO 缺失）→ 模块静默不应答 | 新增 `cam_vio_rear`（tlmm21 控制 1.8V，vin=s4） |
+| 管线 probe 成功但 `cam` 0 帧 / `Failed to start media pipeline: -32` | 手动 `media-ctl -V` 改了链路 mbus 格式，与 libcamera 期望状态冲突（相邻 pad 不一致 → `-EPIPE`） | 别手动改格式；`modprobe -r imx363 && modprobe imx363` 或在干净状态直接用 `cam -c1 --capture=N` |
+| `media-ctl -V ... Invalid argument (22)` | 实体名未加引号（含空格的名字更必须加） | 写 `-V '"imx363 16-001a":0 [fmt:...]'`；且一条失败会中止后续所有 `-V`，改为逐条设 |
 | `no soundcards found` / `/dev/snd/` 只有 timer | polaris DTS 缺音频节点（上游补丁不含音频），驱动无设备可 probe | 移植 `&sound` + WCD9340 + tas2559 节点（抄 beryllium） |
 | GUI 显示 Dummy Output / 无声 | WirePlumber 启动早于声卡注册，没枚举到 ALSA 卡 0 | PA 启动时 `module-alsa-sink` 显式加载 hw:0,0 为默认 sink |
 | 播放走 MM1 异常 | MM1 DAI 怪异行为 | 输出改 MM3（hw:0,2）、输入 MM2（hw:0,1） |
@@ -336,12 +393,24 @@ pmbootstrap shutdown
 | 内核补丁编译了但设备行为没变 | `flash_kernel` 只刷 boot 分区，rootfs 里 `/usr/lib/modules/` 的模块是旧的 | 升级内核 apk（`apk add --force-overwrite`）让模块也更新 |
 | 7.1-rc1 编译报宏未定义 | `vht_cap_info` 改名 `cap`、`IEEE80211_VHT_CAP_*` 宏移除 | 用裸 hex（0xc0000000 / 0x8）+ 新字段名 |
 
-## 四、当前卡点（摄像头 IMX363 未点亮）
-- 现象：`imx363 16-0010: Error reading reg 0x0016: -110`；`i2cdetect -y -r 16` 0x10 无 ACK（且全总线无设备响应）。
-- 已排除/已对齐：
-  - i2c 地址 0x10 —— 与 mainline 小米 8（beryllium-common.dtsi）同款 IMX363 一致；
-  - MCLK —— gpio13 已复用 `cam_mclk`（debugfs func1），`cam_cc_mclk0_clk` 24MHz 配置成功；
-  - 电源 —— vana=bob / vdig=pm8998 GPIO11(1.05V) / vif=lvs1，与 LineageOS `polaris-camera-sensor-mtp.dtsi` 的 `cam_vana-supply/cam_vdig-supply/cam_vio-supply` 完全一致；
-  - CCI 引脚 —— pinmux 已复用 `cci_i2c`（gpio17-20）。
-- 待验证：**tlmm 102（CUSTOM0）** —— LineageOS 主摄 `gpios = <&tlmm 13 0>, <&tlmm 80 0>, <&tlmm 87 0>, <&tlmm 102 0>`，`gpio-custom1 = <3>`，且 `polaris-p0-pinctrl.dtsi` 的 `cam_sensor_rear_active` 把 gpio80/87/102 配为一组（注释 "RESET, AVDD LDO"）。当前 polaris.dts 未配置 tlmm 102（手机端显示 `in low func0`），可能是传感器缺失的使能信号，待补 `gpio-hog` 或 pinctrl 验证。
-- 已知未做：副摄（IMX376）/前摄未启用；IMX363 主摄仍在排障（见上）。除摄像头外其余功能已全量验收通过（见仓库顶部"验收状态"）。
+## 四、摄像头结论与遗留问题
+
+**已修复**（补丁 `polaris-camera.patch`，2026-09-29 实测）：
+- 三个根因：I2C 地址 0x10→**0x1a**、**CAM_VIO 缺失**（tlmm21 控制 1.8V）、lane 数不全（补成 **4-lane** + camss `vdda-*` 供电）。
+- `imx363 16-001a` probe 成功，`pixel_rate: 508800000`、`4 lanes`；media 链路 `imx363 → msm_csiphy0 → msm_csid0 → msm_vfe0_rdi0`。
+- **v4l2 直采**：`v4l2-ctl --stream-mmap --stream-count=1` 得 15,240,960 字节（1 帧 pRAA SRGGB10P），解码后为真实场景（欠焦光斑，10-bit mean≈390/1023）。
+- **libcamera（用户实际路径）**：重启后不做任何手动配置，`cam -c1 --capture=12 --file=/tmp/x.raw` 12 帧全成功、稳定 ~30fps，输出 ABGR8888 4024x3024（每帧 48,771,072 字节）。
+
+**已知遗留（不影响出图）**：
+- libcamera 软件 ISP（无硬件 ISP 参与）输出偏暗，需自动曝光/后处理；日志有 `eglCreateImageKHR fail → fallback to upload`（仅警告）。
+- 缺 imx363 静态属性 / IPA 调参文件（仅 WARN）。
+- 首帧后偶有不来帧，重试即可；根因未定（怀疑与手动 media-ctl 残留状态有关，重启后消失）。
+- 副摄（IMX376）/前摄未启用。
+
+**已排除的错误假设**（勿再走回头路）：
+- ~~i2c 地址 0x10~~（beryllium 是 0x10，polaris 是 0x1a）。
+- ~~vif = pm8998_lvs1~~（polaris 是 tlmm21 控制的独立 1.8V 稳压器）。
+- ~~tlmm 102（CUSTOM0）是缺失的使能信号~~（未配置也能出图）。
+- ~~2-lane~~（必须 4-lane）。
+
+除副摄/前摄外，本仓库涉及的功能已全部验收通过（见顶部"验收状态"）。
