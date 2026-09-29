@@ -26,7 +26,7 @@
 | IMU 惯性测量单元 | （未测试） | — |
 | Audio 音频 | P | ✅ 无声卡→全自动（DTS 音频节点 + PA/路由固化），GUI+浏览器 mic/扬声器验收通过 |
 | Bluetooth 蓝牙 | Y | — |
-| Camera 摄像头 | P | ✅ IMX363 主摄已出图：i2c 0x1a、cam_vio(GPIO21) 1.8V 供电、4-lane；libcamera/v4l2 均验证通过（见 polaris-camera.patch）。遗留：软件 ISP 偏暗、首帧后偶有不来帧（重试即可） |
+| Camera 摄像头 | P | ✅ IMX363 主摄已出图：i2c 0x1a、cam_vio(GPIO21) 1.8V 供电、4-lane、rotation=270；libcamera/v4l2 均验证通过（见 polaris-camera.patch，仅 dts）。遗留：软件 ISP 偏暗、偶有掉帧、开机后立刻测会长时间不出帧 |
 | GPS | （未测试） | — |
 | Mobile Data 移动数据 | Y | — |
 | SMS 短信 | Y | — |
@@ -67,12 +67,14 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 1. **I2C 地址错**：原补丁写 `reg = <0x10>`，实测 IMX363 在 **`0x1a`**（读 0x0016 得到 0x0363 芯片 ID）。probe 报 `-6`(NACK) 而非 `-110`(timeout) 是定位此问题的决定性信号。
 2. **cam_vio 供电缺失**：量产 polaris 的 CAM_VIO 不是 `pm8998_lvs1`，而是 **`&tlmm 21` 控制的 1.8V 固定稳压器**（vin=pm8998_s4）。缺失时传感器 I2C 域无供电、模块静默不应答。
 3. **lane 数不全**：必须 4-lane（sensor 侧 `data-lanes = <0 1 2 3>`，camss 侧 `clock-lanes = <7>`），并补齐 camss 的 `vdda-phy/pll/csi0-2` 供电。
-修复（`polaris-camera.patch`，含 dts + imx363.c）：新增 `cam_vio_rear`(tlmm21) 稳压器、sensor 改 `reg = <0x1a>`、`vif-supply = <&cam_vio_rear>`、4-lane + link-freq 636MHz、camss 供电与 endpoints。
-**实测结果**：`imx363 16-001a` probe 成功（`pixel_rate: 508800000`，4 lanes），media 拓扑 `imx363 → msm_csiphy0 → msm_csid0 → msm_vfe0_rdi0` 全通；`cam -c1 --capture=12` 稳定 ~30fps 出图（ABGR8888 4024x3024）。
+修复（`polaris-camera.patch`，**仅 dts**）：新增 `cam_vio_rear`(tlmm21) 稳压器、sensor 改 `reg = <0x1a>`、`vif-supply = <&cam_vio_rear>`、4-lane + link-freq 636MHz、camss 供电与 endpoints。
+**实测结果**：`imx363 16-001a` probe 成功（`pixel_rate: 508800000`，4 lanes），media 拓扑 `imx363 → msm_csiphy0 → msm_csid0 → msm_vfe0_rdi0` 全通，可出图（ABGR8888，满分辨率 **4032x3024**）。
+**帧率**：满分辨率 4032x3024 **30fps**（实测帧间隔 30.36/29.12/30.43fps，每帧 48,771,072 B），1080p 同为 30.3fps；首帧延迟约 0.4s。偶有掉帧（间隔掉到 15/7.6fps）。
+> 注意：**开机后不要立刻测**。系统刚启动时负载高（实测 load 2.11），此时首次调用 libcamera 可能几十秒不出帧，属正常现象，不是相机故障。
 
 #### 补丁内容
 
-**权威来源是本目录的 `polaris-camera.patch`**（含 dts + imx363.c，共 156 行）。下方 dts 仅为阅读方便，若与 patch 不一致，以 patch 为准。
+**权威来源是本目录的 `polaris-camera.patch`（仅 dts，共 130 行）**。下方 dts 仅为阅读方便，若与 patch 不一致，以 patch 为准。
 
 ```dts
 /* Camera: Sony IMX363 rear sensor (main) */
@@ -143,7 +145,7 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 		clock-frequency = <24000000>;
 
 		orientation = <1>;
-		rotation = <90>;
+		rotation = <270>;
 
 		port {
 			imx363_ep: endpoint {
@@ -178,7 +180,8 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 - **I2C 地址必须是 0x1a**（不是 beryllium 那套 0x10）：写错时报 `-6`(NACK)，与供电缺失的 `-110`(timeout) 可区分。
 - `link-frequencies` 必须给 636000000（imx363.c 的 24MHz 时钟配置），否则 probe 报 "Link frequency not supported"。
 - `camss` endpoint 必须带 `data-lanes` + `clock-lanes = <7>`，否则 bus_type 解析成非 CSI2 报 `Unsupported bus type 2`。**sensor 与 camss 两侧 lane 数必须一致且为 4-lane**。
-- `imx363.c` 的 `imx363_power_on()` 时序被调整：regulators → 400µs → **先 `clk_prepare_enable`(MCLK)** → reset assert(1) → 1~2ms → release(0) → 10~20ms。上游原版是 reset 先释放再开时钟，实测不工作时序。
+- `imx363.c` **不需要任何修改**：曾试过改 `imx363_power_on()` 时序（先 `clk_prepare_enable`(MCLK) 再释放 reset），A/B 对照证明**上游原版时序即可正常出图**（1080p 30.3fps、满分辨率 30fps），故该改动已删除，补丁只保留 dts。
+- `rotation = <270>`：与同款 IMX363 的 beryllium / sargo / oneplus 后摄一致。写 `<90>` 会让画面上下+左右同时翻转 180°。
 - MCLK 必须显式 pinctrl（gpio13 `cam_mclk`），否则 MCLK 时钟到不了引脚、传感器不响应。
 
 > **调试提醒**：不要在用 libcamera 之前手动 `media-ctl -V` 改链路格式。相邻 pad 的 mbus code 不一致会让 `media_pipeline_start()` 返回 `-EPIPE`(-32)（dmesg "Failed to start media pipeline: -32"），或启动成功但 0 帧。恢复方式：`sudo modprobe -r imx363 && sudo modprobe imx363`，或在干净状态下直接 `cam -c1 --capture=N --file=/tmp/x.raw`。

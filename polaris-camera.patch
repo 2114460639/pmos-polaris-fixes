@@ -1,5 +1,5 @@
 diff --git a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
-index a44d6e776..57a1db0c3 100644
+index a44d6e776..6bdb344d7 100644
 --- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
 +++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
 @@ -522,6 +522,14 @@ &pmi8998_wled {
@@ -90,7 +90,7 @@ index a44d6e776..57a1db0c3 100644
 +		clock-frequency = <24000000>;
 +
 +		orientation = <1>;
-+		rotation = <90>;
++		rotation = <270>;
 +
 +		port {
 +			imx363_ep: endpoint {
@@ -128,29 +128,3 @@ index a44d6e776..57a1db0c3 100644
 +                output-high;
 +        };
 +};
-diff --git a/drivers/media/i2c/imx363.c b/drivers/media/i2c/imx363.c
-index d6adea64d..93049d0f3 100644
---- a/drivers/media/i2c/imx363.c
-+++ b/drivers/media/i2c/imx363.c
-@@ -1049,17 +1049,15 @@ static int imx363_power_on(struct device *dev)
- 	}
- 
- 	usleep_range(400, 600);
--
--	gpiod_set_value_cansleep(imx363->reset_gpio, 0);
--
- 	ret = clk_prepare_enable(imx363->clk);
- 	if (ret) {
- 		dev_err(dev, "failed to enable clock\n");
- 		regulator_bulk_disable(IMX363_NUM_SUPPLIES, imx363->supplies);
- 	}
--
--	usleep_range(1000, 1200);
--
-+	gpiod_set_value_cansleep(imx363->reset_gpio, 1);
-+	usleep_range(1000, 2000);
-+	gpiod_set_value_cansleep(imx363->reset_gpio, 0);
-+	usleep_range(10000, 20000);
- 	return 0;
- }
- 
