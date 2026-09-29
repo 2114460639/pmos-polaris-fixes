@@ -2,9 +2,12 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1.0-rc1（sdm845-mainline/linux）
 - 环境：pmbootstrap 3.11.1，channel `systemd-v26.06`，UI `phosh`
-- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化），另附 `pmaports-xiaomi-polaris.patch`
+- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化）、一键脚本 `build.sh`、完整补丁 `pmaports-xiaomi-polaris.patch`（28 个文件变更，可一步 `git apply`）
+- **一键构建**：`PROXY=http://127.0.0.1:7890 ./build.sh`（= 打补丁 + checksum + 构建三个包；`DO_INSTALL=1` 生成镜像、`DO_FLASH=1` 再刷机）
+- 本仓库**不含二进制固件**：`wlanmdsp-01387.mbn` 属专有二进制，不宜再分发，需按「二、2」自备
 - **验收状态：2026-09-27 全新刷机（fastboot 全量）验证通过** —— 屏幕/触摸正常、GPU 无错、WiFi 5G 866.7Mbps 满速、GUI 音频 + 浏览器网页 mic/扬声器均通过、录音正常、电池 99%。开箱即用达成。
 - **摄像头补丁（2026-09-29 验证）**：IMX363 主摄已出图，`polaris-camera.patch` 见「一、3」与「四」。
+- **系统语言 / 目录名（2026-09-30 固化）**：界面默认中文、默认文件夹名保持英文、内置中文字体，见「一、6」。
 
 ## 〇、功能支持情况（2026-09-27 实测）
 
@@ -31,6 +34,7 @@
 | Mobile Data 移动数据 | Y | — |
 | SMS 短信 | Y | — |
 | Calls 通话 | P | — |
+| Localization 本地化 | — | 界面默认中文（zh_CN.UTF-8）+ 默认文件夹名保持英文 + font-noto-cjk（2026-09-30 固化，见「一、6」） |
 | USB-OTG USB OTG | N | — |
 | NFC | （未测试） | — |
 | HDMI/DP | - | — |
@@ -224,14 +228,36 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 
 > 诊断期还试过 `polaris-wifi-vht-mcs-0-11.patch`（MCS 0-9→0-11），后经三设备对比确认 **MCS 声明不是差异**（三台 MCS Map 都是 0xfffa），该补丁非最终必需——以 APKBUILD source= 实际收录为准。
 
+### 6. 系统语言与默认目录名（已固化，非内核补丁）
+- **界面默认中文**：`pmbootstrap config locale zh_CN.UTF-8` → 构建时由 pmbootstrap 的 `setup_locale()` 写入 `/etc/locale.conf`（同时生成 `/etc/profile.d/10locale-pmos.sh`）。中文翻译包由 `postmarketos-base-ui` 依赖的 `lang` 元包自动拉全，无需手动装。
+- **默认文件夹保持英文**：`xdg-user-dirs` 会在首次登录时按语言把 `~/Desktop` 等改名为「桌面/文档/下载」。修复：在 `device-xiaomi-polaris` 包里投放**用户级** `/etc/skel/.config/user-dirs.conf`（`enabled=False`）和 `user-dirs.dirs`（英文路径）。用用户级而非系统级的原因：`/etc/xdg/user-dirs.conf` 属 `xdg-user-dirs` 包、不能被别的包覆盖，而用户级 `~/.config/user-dirs.conf` 可以覆盖它（已实测）。
+- **中文字体**：`device-xiaomi-polaris` 的 `depends` 增加 `font-noto-cjk`。
+- 以上三处改的是 `device/testing/device-xiaomi-polaris/`（`pkgrel` 0→1），已包含在 `pmaports-xiaomi-polaris.patch` 中。
+
 ## 二、从零复现（逐条执行）
 
-### 0. 前置
+### 0. 前置（版本锁定）
+
+本仓库的验证环境如下。**版本不同会导致补丁 hunk 冲突或构建结果差异**，建议先对齐。
+
+| 项目 | 值 |
+|---|---|
+| pmbootstrap | 3.11.1 |
+| pmaports 分支 | `v26.06` |
+| pmaports commit | `368093c7a882637ee00d32932fb0dafd24cfc4d4` |
+| postmarketOS | v26.06（aarch64） |
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-pmbootstrap --version          # 3.11.1
-# 需要访问 GitHub 时设代理（按自己环境修改）
+pmbootstrap --version                      # 3.11.1
 
+# 锁定 pmaports 版本（建议）
+cd ~/.local/var/pmbootstrap/cache_git/pmaports
+git checkout 368093c7a882637ee00d32932fb0dafd24cfc4d4
+
+# 代理：内核源码来自 gitlab.com、上游包索引也常需要。
+# 按自己环境改成可用地址，或 export 后用 build.sh。
+export PROXY=http://127.0.0.1:7890         # 例：本地 clash/v2ray 端口
 ```
 
 ### 1. 初始化（只需一次）
@@ -240,12 +266,47 @@ pmbootstrap init
 # vendor: xiaomi / device: polaris / UI: phosh / systemd: yes
 ```
 
-### 2. 应用补丁
+### 2. 应用补丁（一步到位）
+
+`pmaports-xiaomi-polaris.patch` 已包含**全部 28 个文件变更**：4 个 APKBUILD / 文件列表的修改 + 17 个内核补丁 + 6 个 firmware 包文件（3 个 service、preset、pa、文件列表）+ 2 个 device 包的 user-dirs 配置。
+另有 1 个二进制固件不在 diff 内，需自行准备（见下）。
+
 ```bash
 cd ~/.local/var/pmbootstrap/cache_git/pmaports
-git apply /path/to/pmaports-xiaomi-polaris.patch
+git apply /path/to/pmos-polaris-fixes/pmaports-xiaomi-polaris.patch
 git status --short
 ```
+
+#### 二进制固件 `wlanmdsp-01387.mbn`（需自备）
+
+`firmware-xiaomi-polaris` 包在 `source=` 里引用一个专有固件。本仓库不再分发它，必须自备，否则 `checksum` / 构建会以 sha512 不匹配而失败。
+
+| 项 | 值 |
+|---|---|
+| 文件名 | `wlanmdsp-01387.mbn` |
+| 放置位置 | `device/testing/firmware-xiaomi-polaris/` |
+| 大小 | 3,725,044 字节 |
+| sha512 | `15538bfe95a00979c7cf23fe9f014afd31f9b82224e3057cebe46fb50863ce3cb7b4bc7359acd55cd40385352452e78c4a761cb2ba15f9ee6078778a6c7a0b64` |
+
+它是 **WCN3990 WiFi 固件**（装到 `lib/firmware/ath10k/WCN3990/hw1.0/wlanmdsp.mbn`）的较新版本，取自小米 ROM 版本号含 `01387` 的固件。上游 `firmware-xiaomi-polaris`（commit `d88ffb2`，即本仓库 pin 的版本）只带旧版 `wlanmdsp.mbn`（3,645,892 字节，sha512 `ca4701b96ca155512b029d6b7e995f2607f2f9672229a9e0de688426358d04ed827fd45c9e8bcec2b08307c9db8bee24c48285d1c0d283463bb6a828e7d02eb8`），两者不同。
+
+获取途径（任选其一）：
+1. **从原厂 ROM 提取（推荐）**：下载小米 MIX 2S 版本号含 `01387` 的原厂 fastboot ROM，解包后在 vendor / 固件分区镜像里找到 WCN3990 的 `wlanmdsp.mbn`（可用 `payload-dumper-go`、`imgextractor`，或直接在 Linux 上挂载 `vendor.img`），重命名并核对上表 sha512。
+2. **从其它 WCN3990 机型取**：sha512 与上表一致即与本机完全相同；版本不一致通常也能工作，但行为可能与本机有差异。
+
+> **拿不到也没关系（不影响主要功能）**：本机诊断记录显示，5GHz 满速的决定性修复是那 3 个内核补丁（`polaris-wifi-vht-cap-80` / `-highest-780` / `-host-cap-skip-quirk`），此固件只是同期加入的**版本更新**。要跳过它，改两处即可：
+> - `device/testing/firmware-xiaomi-polaris/APKBUILD`：删掉 `source=` 中的 `wlanmdsp-01387.mbn`，并删掉 `package()` 中对应的 `install -Dm644 "$srcdir/wlanmdsp-01387.mbn" ...` 那一行
+> - 重新执行 `pmbootstrap checksum firmware-xiaomi-polaris`（`sha512sums` 会自动重算）
+
+> **推荐用一键脚本**，等价于「打补丁 + checksum + 构建三个包」（二进制固件需按上表自备）：
+> ```bash
+> PROXY=http://127.0.0.1:7890 ./build.sh                 # 只构建
+> DO_INSTALL=1 PROXY=... ./build.sh                      # 再生成镜像
+> DO_FLASH=1   DO_INSTALL=1 PROXY=... ./build.sh         # 再刷进手机
+> ```
+>
+> 下面第 3 / 3.5 / 3.6 节的内核补丁与 firmware 文件**都已包含在上述补丁里**，这几节保留作为根因与排查记录，无需再手动执行。
+
 若出现 hunk 冲突（上游改过 `pkgrel` / `source=`），手动改这几处：
 - `device/community/linux-postmarketos-qcom-sdm845/APKBUILD`：`source=` 中加入 `nt35596s-prepare-prev-first.patch`，并把补丁文件放入同目录
 - `device/testing/firmware-xiaomi-polaris/APKBUILD`：`package()` 末尾加，并把 `pkgrel` +1
@@ -270,7 +331,7 @@ cp /tmp/polaris-camera.patch \
 # APKBUILD source= 列表追加一行（在 polaris-slim-ngd-msgdbg2.patch 之后）
 #     polaris-camera.patch
 # 构建必须带代理，否则 Update package index 卡 0%
-export http_proxy=http://192.168.1.10:7899 https_proxy=http://192.168.1.10:7899
+export http_proxy="$PROXY" https_proxy="$PROXY"
 cd ~/.local/var/pmbootstrap/cache_git/pmaports
 pmbootstrap checksum linux-postmarketos-qcom-sdm845 && pmbootstrap build linux-postmarketos-qcom-sdm845 --force
 ```
@@ -326,7 +387,10 @@ pmbootstrap build --force firmware-xiaomi-polaris           # 很快
 
 ### 5. 安装与刷机
 ```bash
-pmbootstrap install
+# 中文界面靠这条（写 /etc/locale.conf；默认文件夹名保持英文由 device 包的 skel 配置保证）
+pmbootstrap config locale zh_CN.UTF-8
+
+pmbootstrap install --password password
 pmbootstrap flasher flash_kernel
 pmbootstrap flasher flash_rootfs --partition userdata
 ```

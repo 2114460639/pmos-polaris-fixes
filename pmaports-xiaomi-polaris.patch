@@ -1,32 +1,77 @@
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
-index 42d5e5df..39333152 100644
+index 42d5e5dfad..32ce82ab52 100644
 --- a/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
 +++ b/device/community/linux-postmarketos-qcom-sdm845/APKBUILD
-@@ -35,6 +35,7 @@ _defconfig="defconfig"
+@@ -5,7 +5,8 @@ maintainer="Casey Connolly <kcxt@postmarketos.org>"
+ _flavor="postmarketos-qcom-sdm845"
+ pkgname=linux-$_flavor
+ pkgver=7.1_rc1
+-pkgrel=0
++pkgrel=24
++
+ pkgdesc="Mainline Kernel fork for SDM845 devices"
+ arch="aarch64"
+ _carch="arm64"
+@@ -35,11 +36,30 @@ _defconfig="defconfig"
  source="
  	linux-$_tag.tar.gz::https://gitlab.com/sdm845-mainline/linux/-/archive/$_tag/linux-$_tag.tar.gz
  	config-postmarketos-qcom-sdm845.aarch64
 +	nt35596s-prepare-prev-first.patch
++	polaris-battery-fg.patch
++polaris-wifi-vht-highest-780.patch
++	polaris-wifi-vht-cap-80.patch
++	polaris-wifi-host-cap-skip-quirk.patch
++	polaris-firmware-path.patch
++	polaris-audio.patch
++     polaris-soc-pcm-debug.patch
++     polaris-slim-chmap.patch
++     polaris-q6afe-errno.patch
++     polaris-q6afe-dai-ealready.patch
++     polaris-slim-ngd-defactchan.patch
++     polaris-slim-ngd-rxdebug.patch
++     polaris-slim-ngd-tiddebug.patch
++     polaris-slim-ngd-defactchan-enc.patch
++     polaris-slim-ngd-msgdbg2.patch
++        polaris-camera.patch
  "
  builddir="$srcdir/linux-$_tag"
  
-@@ -85,4 +86,5 @@ package() {
+ prepare() {
+-	default_prepare
++default_prepare
++	grep -q "cpu_to_le16(780)" drivers/net/wireless/ath/ath10k/mac.c || { echo "VHT780 PATCH MISSING" >&2; exit 1; }
++	rm -f drivers/net/wireless/ath/ath10k/*.o
+ 	cp "$srcdir/config-$_flavor.$CARCH" .config
+ }
+ 
+@@ -85,4 +105,21 @@ package() {
  sha512sums="
  94da173aaf74dd33ef8ff9015e92759481cd0da5bd8a1e52c8664fd372d48a1155655001ad2e9d26557733c71ae8bc448e4ebdf1372b8f32159907a35f0306a9  linux-sdm845-7.1-rc1-r0.tar.gz
  36d173adc2e9225cfa110ddb6775cd5fc24c4712b469df06d61d4d095f0af5ea1e062ac88f951a5d27715389b109ed7bf17a23e207d3d7fe5a69d2eb277d24cd  config-postmarketos-qcom-sdm845.aarch64
-+dea7cf757c91ba57bba32419e87a8cdc0d710a3384ed3fb7ad457d995826c47dc5a9b4842fe6529965286eab3b51607d4514a2bc1938caf85160897bc279ce58  nt35596s-prepare-prev-first.patch
++d5a064d9463d0a54af0575893945edf4df71fd0079188ab28d1426d077e3a02988e0d6da187a6d40e9adc138446ff92a573e82f6fae126e6b98713d9653a20a6  nt35596s-prepare-prev-first.patch
++6288401b8f6eeb934a40fbad230ba82c6854b22b9c8f528367432c11142e81e82f05b0996ab0b175f0a76d128b30206b20bb5e32f05c679861f4be74d5eb32b7  polaris-battery-fg.patch
++5c7e24ceb7ccf9bad3c768701e0adab089132604c0b41a30d31e182d9627c7ab049c1b5d8b3c2715f5aaf56a9f0199724fc99e54c68d48d5595714fa83fa6ab0  polaris-wifi-vht-highest-780.patch
++e13c974264f9df459c6217f1d74df3ea015d3f2e905edde63dc38854ae3e89d6bcf342d74683e89184322d81c2fdbe0e3df8333730f3a9897700ea93f6cb9905  polaris-wifi-vht-cap-80.patch
++1cf392a07bea54410c3381d406754e4af08a515335845109123f7c11c00bfef29d273f434c7937527bb04f440a766a9874e7c79c4b7d9ad4184b832ea8f90955  polaris-wifi-host-cap-skip-quirk.patch
++73c2d284bf40d934396440102fa516e7f3856c18b612495fc149f11719188a3cbfae8e03ecca878bc046851f5fa7f51f31f0ca432656f2dec48dc6a451baec81  polaris-firmware-path.patch
++f72885580488a4cb7a691e0058a381f80a139cfaefbd3b92c1226540b56a25df5e83d967746294f83811c2f98cb81b7ec2137bbab65f66bfaa6a04a8468806b8  polaris-audio.patch
++ec0b5a81988d42534233faef8cde6aa88c72ae0649868011c882eeab9e98082b61212e543fe3a22f57cae3b17b691f111342041f0acf39503eae93a4e88b00be  polaris-soc-pcm-debug.patch
++33f5dede888daab17b142ae0b32da1527d1f6e875fb78ca4a1f4dd6bc157393af456a6009e72f0e08c84439b62d57dbc1c823827a450de2b7d4b9af21a9186e8  polaris-slim-chmap.patch
++e1afb10a5f01059fb2cfb667f425b35356e1d671c0e4ba98e6fe6e5689c0cf48c5c9aa9635abf3dc88740d95162673b3c6fa1a6cafc0dd9aebc43b3e2727d252  polaris-q6afe-errno.patch
++cf086cbbe3a66644331e95293a2c50add4243974bdf16d17f479ff93daa6eb3b8c6aadc752418f78a05d5b79854830f76fa8c80d4462088adc725a3bca46c5fc  polaris-q6afe-dai-ealready.patch
++36cd96fdc54eabacf2c907849fe78d55a5c3e501af26ebeeaad9129d1b968aed1078ad733e2c294281883397faa11978fff9677961eab97bd421064553b1f023  polaris-slim-ngd-defactchan.patch
++f031424b82c4ee4ec53581c0556cc995f5889f7d4b120222b64ed88d406464573a06d1aa9589a810085c05c92f0802c0bb49f77115b8c539dd45e31b184810d7  polaris-slim-ngd-rxdebug.patch
++0895b55c941350acc74c687314a47452d18493384b3893b1943d05b6c8e57690d1f16b7c6d6dd628451f05ff2cbf49e4e98b52f8bad3a7d259fe867b0e05ae89  polaris-slim-ngd-tiddebug.patch
++604ef6bf49ea49479d43739f1b31c0ee0100009db86ce2a61a41c54a8e9a9d4bcf1ec986921f9552aa17e3b8e7176d8fae0c5629d5d02af4cbf6dce48e4f80ea  polaris-slim-ngd-defactchan-enc.patch
++ee6d7f907839a17c50f275785bbc825b0294408fd11617f8f338031dbfeb72d51b26f8551aec4ec5704b8c4c42475445e9e25810001ca84dea212e25125ad012  polaris-slim-ngd-msgdbg2.patch
++ed6bbca4df7d7b6d1a22aaa1995e73c7e734683636731eded412930fda0c2b15e8fd043c445498e55533f85c997361a729890aad773e149fd8d1599b7f3bf806  polaris-camera.patch
  "
 diff --git a/device/community/linux-postmarketos-qcom-sdm845/nt35596s-prepare-prev-first.patch b/device/community/linux-postmarketos-qcom-sdm845/nt35596s-prepare-prev-first.patch
 new file mode 100644
-index 00000000..40f57439
+index 0000000000..be0ee711e8
 --- /dev/null
 +++ b/device/community/linux-postmarketos-qcom-sdm845/nt35596s-prepare-prev-first.patch
-@@ -0,0 +1,14 @@
-+Panel nt35596s sends its init commands from prepare(), which the panel bridge
-+runs in the pre_enable chain. Without prepare_prev_first the panel bridge is
-+pre_enabled before the MSM DSI host is powered on, so every DCS write fails
-+with -EINVAL and the panel stays black.
-+
+@@ -0,0 +1,9 @@
 +--- a/drivers/gpu/drm/panel/panel-novatek-nt35596s.c
 ++++ b/drivers/gpu/drm/panel/panel-novatek-nt35596s.c
 +@@ -476,6 +476,7 @@ static int nt35596s_panel_add(struct nt35596s_panel *pinfo)
@@ -36,8 +81,764 @@ index 00000000..40f57439
 ++	pinfo->base.prepare_prev_first = true;
 + 
 + 	drm_panel_add(&pinfo->base);
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-audio.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-audio.patch
+new file mode 100644
+index 0000000000..130cd21949
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-audio.patch
+@@ -0,0 +1,148 @@
++--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts.bak	2026-09-26 06:09:10.128057782 +0800
+++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts	2026-09-26 06:44:30.984045404 +0800
++@@ -714,3 +714,145 @@
++ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
++ 	status = "okay";
++ };
+++
+++/* Audio: enable ADSP, sound card, WCD9340 codec, TAS2559/60 amplifiers */
+++&adsp_pas {
+++	status = "okay";
+++	firmware-name = "qcom/sdm845/polaris/adsp.mbn";
+++};
+++
+++&sound {
+++	compatible = "qcom,db845c-sndcard", "qcom,sdm845-sndcard";
+++	pinctrl-0 = <&quat_mi2s_active
+++			&quat_mi2s_sd0_active>;
+++	pinctrl-names = "default";
+++	model = "Xiaomi Mi MIX 2S";
+++	audio-routing =
+++		"RX_BIAS", "MCLK",
+++		"AMIC1", "MIC BIAS1",
+++		"AMIC2", "MIC BIAS2",
+++		"AMIC3", "MIC BIAS3";
+++
+++	mm1-dai-link {
+++		link-name = "MultiMedia1";
+++		cpu {
+++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+++		};
+++	};
+++	mm2-dai-link {
+++		link-name = "MultiMedia2";
+++		cpu {
+++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
+++		};
+++	};
+++	mm3-dai-link {
+++		link-name = "MultiMedia3";
+++		cpu {
+++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA3>;
+++		};
+++	};
+++	mm4-dai-link {
+++		link-name = "MultiMedia4";
+++		cpu {
+++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA4>;
+++		};
+++	};
+++	tas2559-dai-link {
+++		link-name = "Primary Spkr Playback";
+++		cpu {
+++			sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
+++		};
+++		platform {
+++			sound-dai = <&q6routing>;
+++		};
+++		codec {
+++			sound-dai = <&tas2559_codec 0>;
+++		};
+++	};
+++	slim-dai-link {
+++		link-name = "SLIM Playback";
+++		cpu {
+++			sound-dai = <&q6afedai SLIMBUS_0_RX>;
+++		};
+++		platform {
+++			sound-dai = <&q6routing>;
+++		};
+++		codec {
+++			sound-dai = <&wcd9340 0>;
+++		};
+++	};
+++	slimcap-dai-link {
+++		link-name = "SLIM WCD Capture";
+++		cpu {
+++			sound-dai = <&q6afedai SLIMBUS_0_TX>;
+++		};
+++		platform {
+++			sound-dai = <&q6routing>;
+++		};
+++		codec {
+++			sound-dai = <&wcd9340 1>; /* AIF1_CAP */
+++		};
+++	};
+++	slimcap2-dai-link {
+++		link-name = "SLIM WCD Capture 2";
+++		cpu {
+++			sound-dai = <&q6afedai SLIMBUS_1_TX>;
+++		};
+++		platform {
+++			sound-dai = <&q6routing>;
+++		};
+++		codec {
+++			sound-dai = <&wcd9340 3>; /* AIF2_CAP */
+++		};
+++	};
+++};
+++
+++&i2c5 {
+++	status = "okay";
+++	tas2559_codec: tas2559@4c {
+++		#sound-dai-cells = <1>;
+++		compatible = "ti,tas2559";
+++		reg = <0x4c>;
+++		ti,tas2559-reset-gpio = <&tlmm 14 0>;
+++		ti,tas2560-reset-gpio = <&tlmm 25 0>;
+++		ti,tas2559-addr = <0x4c>;
+++		ti,tas2560-addr = <0x4d>;
+++		ti,tas2559-channel = <0>;
+++		ti,tas2560-channel = <1>;
+++	};
+++};
+++
+++&q6afedai {
+++	dai@22 {
+++		reg = <QUATERNARY_MI2S_RX>;
+++		qcom,sd-lines = <0>;
+++	};
+++};
+++
+++&q6asmdai {
+++	dai@0 {
+++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA1>;
+++	};
+++	dai@1 {
+++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA2>;
+++	};
+++	dai@2 {
+++		reg = <MSM_FRONTEND_DAI_MULTIMEDIA3>;
+++	};
+++	dai@3 {
+++		reg = <3>;
+++	};
+++};
+++
+++&wcd9340 {
+++	reset-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
+++	vdd-buck-supply = <&vreg_s4a_1p8>;
+++	vdd-buck-sido-supply = <&vreg_s4a_1p8>;
+++	vdd-tx-supply = <&vreg_s4a_1p8>;
+++	vdd-rx-supply = <&vreg_s4a_1p8>;
+++	vdd-io-supply = <&vreg_s4a_1p8>;
+++	qcom,micbias1-microvolt = <2700000>;
+++	qcom,micbias2-microvolt = <1800000>;
+++	qcom,micbias3-microvolt = <2700000>;
+++	qcom,micbias4-microvolt = <2700000>;
+++};
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-battery-fg.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-battery-fg.patch
+new file mode 100644
+index 0000000000..9fd925a927
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-battery-fg.patch
+@@ -0,0 +1,32 @@
++polaris (Xiaomi Mi MIX 2S): 启用 PMI8998 充电器与电量计，修复电池恒显 0%
++
++polaris 的 DTS 从未覆盖 pmi8998_charger / pmi8998_fg，而这两个节点在
++pmi8998.dtsi 里默认 status = "disabled"，于是系统里根本没有 battery 类型的
++power_supply 设备，UPower/phosh 只能显示 0%。
++
++同内核的 beryllium 电池正常，正是因为它在 DTS 里显式启用了这两个节点并接上
++simple-battery（polaris 的 battery 节点已经存在，只差这个引用）。驱动现成，
++无需改动驱动代码：qcom_smbb.o（CONFIG_CHARGER_QCOM_SMBB）管充电器，
++pmi8998_fg.o（CONFIG_BATTERY_PMI8998_FG）管电量计。
++
++--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++@@ -511,5 +511,18 @@
++ };
++ 
+++&pmi8998_charger {
+++	monitored-battery = <&battery>;
+++
+++	status = "okay";
+++};
+++
+++&pmi8998_fg {
+++	power-supplies = <&pmi8998_charger>;
+++	monitored-battery = <&battery>;
+++
+++	status = "okay";
+++};
+++
++ &pmi8998_wled {
++ 	qcom,current-limit-microamp = <20000>;
++ 	qcom,current-boost-limit = <970>;
+\ No newline at end of file
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-camera.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-camera.patch
+new file mode 100644
+index 0000000000..b99fb8e460
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-camera.patch
+@@ -0,0 +1,130 @@
++diff --git a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++index a44d6e776..6bdb344d7 100644
++--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++@@ -522,6 +522,14 @@ &pmi8998_wled {
++ };
++ 
++ &pm8998_gpios {
+++	pm8998_gpio11_default: pm8998-gpio11-state {
+++		pins = "gpio11";
+++		function = "normal";
+++		bias-pull-up;
+++		drive-push-pull;
+++		qcom,drive-strength = <PMIC_GPIO_STRENGTH_HIGH>;
+++	};
+++
++ 	volume_up_gpio: pm8998-gpio6-state {
++ 		pinconf {
++ 			qcom,drive-strength = <PMIC_GPIO_STRENGTH_NO>;
++@@ -714,3 +722,110 @@ &wifi {
++ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
++ 	status = "okay";
++ };
+++
+++/* Camera: Sony IMX363 rear sensor (main) */
+++/ {
+++	cam_vio_rear: regulator-cam-vio-rear {
+++		compatible = "regulator-fixed";
+++		regulator-name = "cam_vio_rear";
+++		regulator-min-microvolt = <1800000>;
+++		regulator-max-microvolt = <1800000>;
+++		regulator-enable-ramp-delay = <135>;
+++		enable-active-high;
+++		gpio = <&tlmm 21 GPIO_ACTIVE_HIGH>;
+++		vin-supply = <&vreg_s4a_1p8>;
+++	};
+++
+++	cam_vdig_rear: regulator-cam-vdig-rear {
+++		compatible = "regulator-fixed";
+++		regulator-name = "cam_vdig_rear";
+++		regulator-min-microvolt = <1050000>;
+++		regulator-max-microvolt = <1050000>;
+++		regulator-enable-ramp-delay = <135>;
+++		enable-active-high;
+++		gpio = <&pm8998_gpios 11 GPIO_ACTIVE_HIGH>;
+++		pinctrl-names = "default";
+++		pinctrl-0 = <&pm8998_gpio11_default>;
+++	};
+++};
+++
+++&camss {
+++	vdda-phy-supply = <&vreg_l1a_0p875>;
+++	vdda-pll-supply = <&vreg_l26a_1p2>;
+++	vdda-csi0-supply = <&vreg_l1a_0p875>;
+++	vdda-csi1-supply = <&vreg_l1a_0p875>;
+++	vdda-csi2-supply = <&vreg_l1a_0p875>;
+++
+++	status = "okay";
+++	ports {
+++		port@0 {
+++			camss_csi0_ep: endpoint {
+++				remote-endpoint = <&imx363_ep>;
+++                            clock-lanes = <7>;
+++                            data-lanes = <0 1 2 3>;
+++			};
+++		};
+++	};
+++};
+++
+++&cci {
+++	status = "okay";
+++};
+++
+++&cci_i2c0 {
+++        clock-frequency = <400000>;
+++	imx363: camera-sensor@1a {
+++		compatible = "sony,imx363";
+++                reset-gpios = <&tlmm 80 GPIO_ACTIVE_LOW>;
+++		reg = <0x1a>;
+++		status = "okay";
+++
+++		vana-supply = <&vreg_bob>;
+++		vdig-supply = <&cam_vdig_rear>;
+++		vif-supply = <&cam_vio_rear>;
+++
+++		clocks = <&clock_camcc CAM_CC_MCLK0_CLK>;
+++		clock-names = "xvclk";
+++		pinctrl-names = "default";
+++		pinctrl-0 = <&cam0_default &cam_mclk0_default>;
+++		clock-frequency = <24000000>;
+++
+++		orientation = <1>;
+++		rotation = <270>;
+++
+++		port {
+++			imx363_ep: endpoint {
+++				remote-endpoint = <&camss_csi0_ep>;
+++                            data-lanes = <0 1 2 3>;
+++                            link-frequencies = /bits/ 64 <636000000>;
+++			};
+++		};
+++	};
+++};
+++
+++&tlmm {
+++        cam0_default: cam0-default-state {
+++            rst {
+++                pins = "gpio80";
+++                function = "gpio";
+++                drive-strength = <2>;
+++                bias-disable;
+++            };
+++        };
+++                cam_mclk0_default: cam-mclk0-default-state {
+++                pins = "gpio13";
+++                function = "cam_mclk";
+++                drive-strength = <2>;
+++                bias-disable;
+++        };
+++        cam_vana_en: cam-vana-en-state {
+++                gpio-hog;
+++                gpios = <87 0>;
+++                output-high;
+++        };
+++        cam_custom0_en: cam-custom0-en-state {
+++                gpio-hog;
+++                gpios = <102 0>;
+++                output-high;
+++        };
+++};
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-firmware-path.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-firmware-path.patch
+new file mode 100644
+index 0000000000..24cb242ef5
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-firmware-path.patch
+@@ -0,0 +1,58 @@
++--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts	2026-05-09 12:21:17.000000000 +0800
+++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts	2026-09-26 04:14:29.542036987 +0800
++@@ -370,7 +370,7 @@
++ };
++ 
++ &cdsp_pas {
++-	firmware-name = "qcom/sdm845/Xiaomi/polaris/cdsp.mbn";
+++	firmware-name = "qcom/sdm845/polaris/cdsp.mbn";
++ 
++ 	status = "okay";
++ };
++@@ -396,7 +396,7 @@
++ };
++ 
++ &gpu_zap_shader {
++-	firmware-name = "qcom/sdm845/Xiaomi/polaris/a630_zap.mbn";
+++	firmware-name = "qcom/sdm845/polaris/a630_zap.mbn";
++ };
++ 
++ &ibb {
++@@ -411,7 +411,7 @@
++ &ipa {
++ 	qcom,gsi-loader = "self";
++ 	memory-region = <&ipa_fw_mem>;
++-	firmware-name = "qcom/sdm845/Xiaomi/polaris/ipa_fws.mbn";
+++	firmware-name = "qcom/sdm845/polaris/ipa_fws.mbn";
++ 
++ 	status = "okay";
++ };
++@@ -504,8 +504,8 @@
++ };
++ 
++ &mss_pil {
++-	firmware-name = "qcom/sdm845/Xiaomi/polaris/mba.mbn",
++-			"qcom/sdm845/Xiaomi/polaris/modem.mbn";
+++	firmware-name = "qcom/sdm845/polaris/mba.mbn",
+++			"qcom/sdm845/polaris/modem.mbn";
++ 
++ 	status = "okay";
++ };
++@@ -627,7 +627,7 @@
++ 		compatible = "qcom,wcn3990-bt";
++ 
++ 		/* This path is relative to the qca/ subdir under lib/firmware. */
++-		firmware-name = "Xiaomi/polaris/crnv21.bin";
+++		firmware-name = "polaris/crnv21.bin";
++ 
++ 		vddio-supply = <&vreg_s4a_1p8>;
++ 		vddxo-supply = <&vreg_l7a_1p8>;
++@@ -687,7 +687,7 @@
++ };
++ 
++ &venus {
++-	firmware-name = "qcom/sdm845/Xiaomi/polaris/venus.mbn";
+++	firmware-name = "qcom/sdm845/polaris/venus.mbn";
++ 
++ 	status = "okay";
++ };
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-dai-ealready.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-dai-ealready.patch
+new file mode 100644
+index 0000000000..4609b87110
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-dai-ealready.patch
+@@ -0,0 +1,22 @@
++--- a/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.402179138 +0800
+++++ b/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.406179138 +0800
++@@ -15,6 +15,7 @@
++ #include "q6dsp-lpass-ports.h"
++ #include "q6dsp-common.h"
++ #include "q6afe.h"
+++#include "q6dsp-errno.h"
++ 
++ 
++ struct q6afe_dai_priv_data {
++@@ -440,6 +441,11 @@
++ 
++ 	rc = q6afe_port_start(dai_data->port[dai->id]);
++ 	if (rc < 0) {
+++		if (rc == -ADSP_EALREADY) {
+++		        /* SLIM ports may already be running on the ADSP; treat as started. */
+++		        dai_data->is_port_started[dai->id] = true;
+++		        return 0;
+++		}
++ 		dev_err(dai->dev, "fail to start AFE port %x\n", dai->id);
++ 		return rc;
++ 	}
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-errno.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-errno.patch
+new file mode 100644
+index 0000000000..41c12dd428
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-q6afe-errno.patch
+@@ -0,0 +1,11 @@
++--- a/sound/soc/qcom/qdsp6/q6afe.c	2026-09-26 21:58:35.398179138 +0800
+++++ b/sound/soc/qcom/qdsp6/q6afe.c	2026-09-26 21:58:35.402179138 +0800
++@@ -1103,7 +1103,7 @@
++ 	} else if (result->status > 0) {
++ 		dev_err(afe->dev, "DSP returned error[%x]\n",
++ 			result->status);
++-		ret = -EINVAL;
+++		ret = -result->status;
++ 	} else {
++ 		ret = 0;
++ 	}
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-chmap.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-chmap.patch
+new file mode 100644
+index 0000000000..e8475cb255
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-chmap.patch
+@@ -0,0 +1,24 @@
++--- a/sound/soc/qcom/sdm845.c	2026-09-26 17:09:32.463766116 +0800
+++++ b/sound/soc/qcom/sdm845.c	2026-09-26 17:22:41.011761514 +0800
++@@ -289,6 +289,21 @@
++ 		}
++ 		break;
++ 	case SLIMBUS_0_RX...SLIMBUS_6_TX:
+++		/* Set the channel map on the cpu DAI for this link, so that
+++		 * the AFE SLIM port config gets a valid num_channels. Without
+++		 * this ADSP rejects the SET_PARAM during port enable.
+++		 */
+++		for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
+++		        if (cpu_dai->id & 0x1) /* TX */
+++		            rval = snd_soc_dai_set_channel_map(cpu_dai,
+++		                                              ARRAY_SIZE(tx_ch), tx_ch, 0, NULL);
+++		        else /* RX */
+++		            rval = snd_soc_dai_set_channel_map(cpu_dai,
+++		                                              0, NULL,
+++		                                              ARRAY_SIZE(rx_ch), rx_ch);
+++		        if (rval != 0 && rval != -ENOTSUPP)
+++		            return rval;
+++		}
++ 		/* setting up wcd multiple times for slim port is redundant */
++ 		if (pdata->slim_port_setup || !link->no_pcm)
++ 			return 0;
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan-enc.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan-enc.patch
+new file mode 100644
+index 0000000000..2f1fc73794
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan-enc.patch
+@@ -0,0 +1,12 @@
++--- /tmp/qcom-ngd-ctrl-r18.c	2026-09-27 00:28:01.950126804 +0800
+++++ psrc/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-27 00:58:33.366116114 +0800
++@@ -1020,7 +1020,8 @@
++ 		if (txn.msg->num_bytes == 0) {
++ 			int exp = 0, coef = 0;
++ 
++-			wbuf[txn.msg->num_bytes++] = sdev->laddr;
+++			wbuf[txn.msg->num_bytes++] =
+++			        (port->ch.data_fmt << 5) | (sdev->laddr & 0x1f);
++ 			wbuf[txn.msg->num_bytes] = rt->bps >> 2 |
++ 						   (port->ch.aux_fmt << 6);
++ 
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan.patch
+new file mode 100644
+index 0000000000..f8e5e632a4
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-defactchan.patch
+@@ -0,0 +1,13 @@
++--- a/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:34:33.358145531 +0800
+++++ b/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:34:33.362145531 +0800
++@@ -1059,9 +1059,7 @@
++ 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
++ 	if (ret) {
++ 		slim_free_txn_tid(ctrl, &txn);
++-		dev_err(&sdev->dev, "TX timed out:MC:0x%x,mt:0x%x", txn.mc,
++-				txn.mt);
++-		return ret;
+++		dev_warn(&sdev->dev, "DEF_ACT_CHAN failed %d, continuing with reconfig\n", ret);
++ 	}
++ 
++ 	txn.mc = SLIM_USR_MC_RECONFIG_NOW;
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-msgdbg2.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-msgdbg2.patch
+new file mode 100644
+index 0000000000..f727341b82
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-msgdbg2.patch
+@@ -0,0 +1,10 @@
++--- /tmp/qcom-ngd-ctrl-r20.c	2026-09-27 01:32:16.342104307 +0800
+++++ psrc/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-27 01:32:09.206104349 +0800
++@@ -1057,6 +1057,7 @@
++ 		wbuf[txn.msg->num_bytes++] = port->ch.id;
++ 	}
++ 
+++	dev_info(&sdev->dev, "DEF_ACT_CHAN msg[%d]: %02x %02x %02x %02x %02x %02x laddr=%d\n", txn.msg->num_bytes, txn.msg->wbuf[0], txn.msg->wbuf[1], txn.msg->wbuf[2], txn.msg->wbuf[3], txn.msg->wbuf[4], txn.msg->wbuf[5], sdev->laddr);
++ 	dev_info(&sdev->dev, "DEF_ACT_CHAN send: tid=%d\n", txn.tid);
++ 	txn.mc = SLIM_USR_MC_DEF_ACT_CHAN;
++ 	txn.rl = txn.msg->num_bytes + 4;
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-rxdebug.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-rxdebug.patch
+new file mode 100644
+index 0000000000..cba7027ce1
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-rxdebug.patch
+@@ -0,0 +1,10 @@
++--- /tmp/qcom-ngd-ctrl-r16.c	2026-09-27 00:00:15.326136531 +0800
+++++ psrc/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-26 23:57:42.118137425 +0800
++@@ -606,6 +606,7 @@
++ 	mt = SLIM_HEADER_GET_MT(buf[0]);
++ 	len = SLIM_HEADER_GET_RL(buf[0]);
++ 	mc = SLIM_HEADER_GET_MC(buf[1]);
+++	dev_info(ctrl->dev, "RX msg: mc=0x%x mt=0x%x len=%d\n", mc, mt, len);
++ 
++ 	if (mc == SLIM_USR_MC_MASTER_CAPABILITY &&
++ 		mt == SLIM_MSG_MT_SRC_REFERRED_USER)
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-tiddebug.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-tiddebug.patch
+new file mode 100644
+index 0000000000..1f33462a80
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-slim-ngd-tiddebug.patch
+@@ -0,0 +1,18 @@
++--- /tmp/qcom-ngd-ctrl-r17.c	2026-09-27 00:07:04.246134144 +0800
+++++ psrc/drivers/slimbus/qcom-ngd-ctrl.c	2026-09-27 00:06:55.006134198 +0800
++@@ -617,6 +617,7 @@
++ 	    mt == SLIM_MSG_MT_SRC_REFERRED_USER) ||
++ 		(mc == SLIM_USR_MC_GENERIC_ACK &&
++ 		 mt == SLIM_MSG_MT_SRC_REFERRED_USER)) {
+++		dev_info(ctrl->dev, "RX resp: mc=0x%x mt=0x%x b2=0x%x b3=0x%x b4=0x%x len=%d\n", mc, mt, buf[2], buf[3], buf[4], len);
++ 		slim_msg_response(&ctrl->ctrl, &buf[4], buf[3], len - 4);
++ 		pm_runtime_mark_last_busy(ctrl->ctrl.dev);
++ 	}
++@@ -1055,6 +1056,7 @@
++ 		wbuf[txn.msg->num_bytes++] = port->ch.id;
++ 	}
++ 
+++	dev_info(&sdev->dev, "DEF_ACT_CHAN send: tid=%d\n", txn.tid);
++ 	txn.mc = SLIM_USR_MC_DEF_ACT_CHAN;
++ 	txn.rl = txn.msg->num_bytes + 4;
++ 	ret = qcom_slim_ngd_xfer_msg_sync(ctrl, &txn);
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-soc-pcm-debug.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-soc-pcm-debug.patch
+new file mode 100644
+index 0000000000..00f1fe87f6
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-soc-pcm-debug.patch
+@@ -0,0 +1,46 @@
++--- a/sound/soc/soc-pcm.c	2026-09-26 08:28:04.416009138 +0800
+++++ b/sound/soc/soc-pcm.c	2026-09-26 08:28:04.420009138 +0800
++@@ -863,21 +863,21 @@
++ 	for_each_rtd_components(rtd, i, component)
++ 		pinctrl_pm_select_default_state(component->dev);
++ 
++-	ret = snd_soc_pcm_component_pm_runtime_get(rtd, substream);
+++	ret = snd_soc_pcm_component_pm_runtime_get(rtd, substream); pr_err("DBGSTEP1 pm_get=%d\n", ret);
++ 	if (ret < 0)
++ 		goto err;
++ 
++-	ret = soc_pcm_components_open(substream);
+++	ret = soc_pcm_components_open(substream); pr_err("DBGSTEP2 comps=%d\n", ret);
++ 	if (ret < 0)
++ 		goto err;
++ 
++-	ret = snd_soc_link_startup(substream);
+++	ret = snd_soc_link_startup(substream); pr_err("DBGSTEP3 link=%d\n", ret);
++ 	if (ret < 0)
++ 		goto err;
++ 
++ 	/* startup the audio subsystem */
++ 	for_each_rtd_dais(rtd, i, dai) {
++-		ret = snd_soc_dai_startup(dai, substream);
+++		ret = snd_soc_dai_startup(dai, substream); pr_err("DBGSTEP4 dai_startup=%d\n", ret);
++ 		if (ret < 0)
++ 			goto err;
++ 	}
++@@ -891,7 +891,7 @@
++ 
++ 	soc_pcm_update_symmetry(substream);
++ 
++-	ret = soc_hw_sanity_check(substream);
+++	ret = soc_hw_sanity_check(substream); pr_err("DBGSTEP5 sanity=%d\n", ret);
++ 	if (ret < 0)
++ 		goto err;
++ 
++@@ -899,7 +899,7 @@
++ 
++ 	/* Symmetry only applies if we've already got an active stream. */
++ 	for_each_rtd_dais(rtd, i, dai) {
++-		ret = soc_pcm_apply_symmetry(substream, dai);
+++		ret = soc_pcm_apply_symmetry(substream, dai); pr_err("DBGSTEP7 symmetry=%d\n", ret);
++ 		if (ret != 0)
++ 			goto err;
++ 	}
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-host-cap-skip-quirk.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-host-cap-skip-quirk.patch
+new file mode 100644
+index 0000000000..94e5113848
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-host-cap-skip-quirk.patch
+@@ -0,0 +1,25 @@
++polaris (Xiaomi Mi MIX 2S): 让 WCN3990 跳过 host capability QMI 请求
++
++polaris 上的 WCN3990 固件不支持 host capability QMI 请求，直接回
++QMI_ERR_MALFORMED_MSG_V01，ath10k_snoc 打印：
++
++    ath10k_snoc 18800000.wifi: host capability request rejected: 1
++
++因为该请求发生在下载固件/板卡数据之前，驱动会在这里就中止初始化，WiFi
++完全起不来。上游为此引入了 DT 怪癖 qcom,snoc-host-cap-skip-quirk，并已在
++beryllium、judyln 上使用；polaris 的 WCN3990 属于同一批固件，补上同样的
++quirk 即可（本设备的 board-2.bin 只有 qmi-board-id 条目，没有 variant，
++因此不需要 qcom,calibration-variant）。
++
++--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++@@ -709,8 +709,9 @@
++ &wifi {
++ 	vdd-0.8-cx-mx-supply = <&vreg_l5a_0p8>;
++ 	vdd-1.8-xo-supply = <&vreg_l7a_1p8>;
++ 	vdd-1.3-rfa-supply = <&vreg_l17a_1p3>;
++ 	vdd-3.3-ch0-supply = <&vreg_l25a_3p3>;
++ 	vdd-3.3-ch1-supply = <&vreg_l23a_3p3>;
+++	qcom,snoc-host-cap-skip-quirk;
++ 	status = "okay";
++ };
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-cap-80.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-cap-80.patch
+new file mode 100644
+index 0000000000..2c4a402e2b
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-cap-80.patch
+@@ -0,0 +1,10 @@
++--- a/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 23:29:53.054136656 +0800
+++++ b/drivers/net/wireless/ath/ath10k/mac.c	2026-09-26 02:39:11.250070362 +0800
++@@ -5033,6 +5033,7 @@
++ 		band->vht_cap = vht_cap;
++                 band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(780);
++                 band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(780);
+++                band->vht_cap.cap = cpu_to_le32(0x3381f9b2);
++ 	}
++ }
++ 
+diff --git a/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-highest-780.patch b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-highest-780.patch
+new file mode 100644
+index 0000000000..440bdb942a
+--- /dev/null
++++ b/device/community/linux-postmarketos-qcom-sdm845/polaris-wifi-vht-highest-780.patch
+@@ -0,0 +1,11 @@
++--- a/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 20:03:45.406208842 +0800
+++++ b/drivers/net/wireless/ath/ath10k/mac.c	2026-09-25 20:03:45.414208842 +0800
++@@ -5031,6 +5031,8 @@
++ 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
++ 		band->ht_cap = ht_cap;
++ 		band->vht_cap = vht_cap;
+++                band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(780);
+++                band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(780);
++ 	}
++ }
++ 
+diff --git a/device/testing/device-xiaomi-polaris/APKBUILD b/device/testing/device-xiaomi-polaris/APKBUILD
+index 32fb1130e0..fe79c08e3d 100644
+--- a/device/testing/device-xiaomi-polaris/APKBUILD
++++ b/device/testing/device-xiaomi-polaris/APKBUILD
+@@ -4,7 +4,7 @@ maintainer="Molly Sophia <mollysophia379@gmail.com>"
+ pkgname=device-xiaomi-polaris
+ pkgdesc="Xiaomi Mi Mix 2S"
+ pkgver=7
+-pkgrel=0
++pkgrel=1
+ url="https://postmarketos.org"
+ license="MIT"
+ arch="aarch64"
+@@ -16,6 +16,7 @@ depends="
+ 	alsa-ucm-conf-sdm845
+ 	soc-qcom
+ 	soc-qcom-pd-mapper
++	font-noto-cjk
+ "
+ makedepends="devicepkg-dev"
+ source="
+@@ -23,6 +24,8 @@ source="
+ 	kernel-cmdline.conf
+ 	modules-initfs
+ 	phoc.ini
++	user-dirs.conf
++	user-dirs.dirs
+ "
+ subpackages="
+ 	$pkgname-nonfree-firmware:nonfree_firmware
+@@ -35,6 +38,14 @@ build() {
+ 
+ package() {
+ 	devicepkg_package $startdir $pkgname
++
++	# 默认文件夹名保持英文（不随 zh_CN 语言被改成 桌面/文档/下载）：
++	# 用户级 user-dirs.conf 的 enabled=False 会覆盖 /etc/xdg/user-dirs.conf，
++	# 直接禁掉 xdg-user-dirs-update 的自动改名/建目录
++	install -Dm644 "$srcdir"/user-dirs.conf \
++		"$pkgdir"/etc/skel/.config/user-dirs.conf
++	install -Dm644 "$srcdir"/user-dirs.dirs \
++		"$pkgdir"/etc/skel/.config/user-dirs.dirs
+ }
+ 
+ nonfree_firmware() {
+@@ -58,4 +69,6 @@ f998bf923aa02b2fe733bbe09b4e662e4d3e7996746ced043b23624ee4fcf70205ae802e564a7d3b
+ 97e88eaa9b8e7989a20d2572479fe5d1fe0284de862da11c91b1f347099d5704673837db01a6b0c289fee0a2d7236f64fba31fd6001475f957c23203e34fd6fb  kernel-cmdline.conf
+ c1efa00cbfae95c2b0713b4c481f27cba1424b3def1d10ca682424a945adc52435564d917e791f63eda3b6a42acba1453a1c61ab7c15b0dac1678d5e54e1d739  modules-initfs
+ e2e417169345c86a5dd34ac0afac4b2b983a755f4c7ba5698c385a01f96b9bd2c3ace1ce5a0569c121675e8b87e88e1cf5c648e995d9c50cba66e52bbc83753c  phoc.ini
++533c705abea1ef4cbf1ad641867b38d551f0343627f6c21ffd24bd62d870c61ddb4f8463d85cbf8639da48a955165dbf30bb388660d6e76550c0ca03f809a8f5  user-dirs.conf
++b7c86721026dd92ea05d0e2d6c5d30422678cd919151e524abbc5bbb9c4b5c336ad535afd4f2b6f98da0354a401a915d10f1e139206c95afcae0c691f4d3bb7b  user-dirs.dirs
+ "
+diff --git a/device/testing/device-xiaomi-polaris/user-dirs.conf b/device/testing/device-xiaomi-polaris/user-dirs.conf
+new file mode 100644
+index 0000000000..5cf8d0ef91
+--- /dev/null
++++ b/device/testing/device-xiaomi-polaris/user-dirs.conf
+@@ -0,0 +1,3 @@
++# 保持默认文件夹名为英文（不随 zh_CN 语言被改成 桌面/文档/下载）
++# 用户级配置会覆盖系统级 /etc/xdg/user-dirs.conf，禁用自动改名/建目录
++enabled=False
+\ No newline at end of file
+diff --git a/device/testing/device-xiaomi-polaris/user-dirs.dirs b/device/testing/device-xiaomi-polaris/user-dirs.dirs
+new file mode 100644
+index 0000000000..783bd15e6e
+--- /dev/null
++++ b/device/testing/device-xiaomi-polaris/user-dirs.dirs
+@@ -0,0 +1,10 @@
++# 保持英文目录名（不随语言变成 桌面/文档/下载）
++XDG_DESKTOP_DIR="$HOME/Desktop"
++XDG_DOWNLOAD_DIR="$HOME/Downloads"
++XDG_TEMPLATES_DIR="$HOME/Templates"
++XDG_PUBLICSHARE_DIR="$HOME/Public"
++XDG_DOCUMENTS_DIR="$HOME/Documents"
++XDG_MUSIC_DIR="$HOME/Music"
++XDG_PICTURES_DIR="$HOME/Pictures"
++XDG_VIDEOS_DIR="$HOME/Videos"
++XDG_PROJECTS_DIR="$HOME/Projects"
+\ No newline at end of file
 diff --git a/device/testing/firmware-xiaomi-polaris/30-gpu-firmware.files b/device/testing/firmware-xiaomi-polaris/30-gpu-firmware.files
-index 010cd6b2..4e9cd1d9 100644
+index 010cd6b22c..4e9cd1d9f9 100644
 --- a/device/testing/firmware-xiaomi-polaris/30-gpu-firmware.files
 +++ b/device/testing/firmware-xiaomi-polaris/30-gpu-firmware.files
 @@ -1,3 +1,4 @@
@@ -45,35 +846,135 @@ index 010cd6b2..4e9cd1d9 100644
  /lib/firmware/qcom/a630_sqe.fw
  /lib/firmware/qcom/sdm845/polaris/a630_zap.mbn
 +/lib/firmware/qcom/sdm845/Xiaomi/polaris/a630_zap.mbn
+diff --git a/device/testing/firmware-xiaomi-polaris/50-polaris.preset b/device/testing/firmware-xiaomi-polaris/50-polaris.preset
+new file mode 100644
+index 0000000000..0f25e12bc3
+--- /dev/null
++++ b/device/testing/firmware-xiaomi-polaris/50-polaris.preset
+@@ -0,0 +1,3 @@
++enable polaris-mic-routing.service
++enable polaris-speaker-routing.service
++enable polaris-pulse-setup.service
 diff --git a/device/testing/firmware-xiaomi-polaris/APKBUILD b/device/testing/firmware-xiaomi-polaris/APKBUILD
-index 69ea3350..ee89bb69 100644
+index 69ea33506a..a62df12cec 100644
 --- a/device/testing/firmware-xiaomi-polaris/APKBUILD
 +++ b/device/testing/firmware-xiaomi-polaris/APKBUILD
-@@ -2,7 +2,7 @@
+@@ -2,7 +2,8 @@
  maintainer="Molly Sophia <mollysophia379@gmail.com>"
  pkgname=firmware-xiaomi-polaris
  pkgver=1
 -pkgrel=0
-+pkgrel=1
++pkgrel=15
++
  pkgdesc="Firmware for Xiaomi Mi Mix2s"
  url="https://github.com/MollySophia/firmware-xiaomi-polaris"
  arch="aarch64"
-@@ -23,6 +23,11 @@ package() {
+@@ -14,7 +15,13 @@ _version="d88ffb2ee182d07567bf280fc4a8493f975ae977"
+ 
+ source="$pkgname.tar.gz::$url/archive/$_version.tar.gz
+ 	firmware.files
+-	30-gpu-firmware.files"
++	30-gpu-firmware.files
++     wlanmdsp-01387.mbn
++     polaris-speaker-routing.service
++     polaris-mic-routing.service
++     polaris-pulse-setup.service
++     polaris-pulse-default.pa
++     50-polaris.preset"
+ subpackages="
+ 	$pkgname-initramfs:firmware_initramfs"
+ 
+@@ -23,6 +30,19 @@ package() {
  	for i in $(cat "$srcdir"/firmware.files); do
  		install -Dm644 "$i" "$pkgdir/$i"
  	done
 +	# mainline kernel loads the a630 zap shader from the per-device path
-+	# qcom/sdm845/Xiaomi/polaris/ (derived from the DT compatible), while the
-+	# vendor firmware only ships it under qcom/sdm845/polaris/.
++    install -Dm644 "$srcdir/wlanmdsp-01387.mbn" "$pkgdir/lib/firmware/ath10k/WCN3990/hw1.0/wlanmdsp.mbn"
++    install -Dm644 "$srcdir/polaris-speaker-routing.service" "$pkgdir/usr/lib/systemd/system/polaris-speaker-routing.service"
++    mkdir -p "$pkgdir/etc/systemd/system/multi-user.target.wants"
++    ln -s /usr/lib/systemd/system/polaris-speaker-routing.service "$pkgdir/etc/systemd/system/multi-user.target.wants/"
++    install -Dm644 "$srcdir/polaris-mic-routing.service" "$pkgdir/usr/lib/systemd/system/polaris-mic-routing.service"
++    ln -s /usr/lib/systemd/system/polaris-mic-routing.service "$pkgdir/etc/systemd/system/multi-user.target.wants/"
++    install -Dm644 "$srcdir/polaris-pulse-setup.service" "$pkgdir/usr/lib/systemd/system/polaris-pulse-setup.service"
++    ln -s /usr/lib/systemd/system/polaris-pulse-setup.service "$pkgdir/etc/systemd/system/multi-user.target.wants/"
++    install -Dm644 "$srcdir/polaris-pulse-default.pa" "$pkgdir/etc/pulse/default.pa.d/50-polaris.pa"
++    install -Dm644 "$srcdir/50-polaris.preset" "$pkgdir/usr/lib/systemd/system-preset/50-polaris.preset"
 +	install -Dm644 lib/firmware/qcom/sdm845/polaris/a630_zap.mbn \
 +		"$pkgdir/lib/firmware/qcom/sdm845/Xiaomi/polaris/a630_zap.mbn"
  }
  
  firmware_initramfs() {
-@@ -38,5 +43,5 @@ firmware_initramfs() {
+@@ -38,5 +58,11 @@ firmware_initramfs() {
  sha512sums="
  49140fbdf15dbf181e1c35788970b45be78c3959222c455133495ee8ad4c6d76581926dfc2eb1ca32f2cdd6390d9fe05c2c497929cd9e3286591bfe8b5ff54eb  firmware-xiaomi-polaris.tar.gz
  2a172fff3844c392c3f03c6d7f1508e03ed18fe916261cedebde79bb38fc21aaf6ed02e5cb88aa3546ea7b978717dc15d0bc71f64703d848cb1d974756dd3670  firmware.files
 -7d430240abae210dd28db688258b45d025915db6fe60345346a1d2d12d7f5bddb0755b3bed8689f54081b7a5188d04906b95c1ea6bbf599019e54544bde1210b  30-gpu-firmware.files
 +15118007c0b5a804e8f94f0321b7d1f9492e650eb3e529984a0f85d57292a3a19463448355b0c324f8c8ed5dedef8427f15cba7950307cc33d47fca38e37006b  30-gpu-firmware.files
++15538bfe95a00979c7cf23fe9f014afd31f9b82224e3057cebe46fb50863ce3cb7b4bc7359acd55cd40385352452e78c4a761cb2ba15f9ee6078778a6c7a0b64  wlanmdsp-01387.mbn
++36dd87da60a26449ba7f3f88835f487a8387a2d7c848f24ec75377233119f2f1bbcf6f95184a99534b1a743a542a9612cecd1ee38a45a8bebe48b8b44bd04c12  polaris-speaker-routing.service
++b18765fb976dfbbb87b0c8f7443ad7a2e6db9171af9977dd36c7ca6dee42b170995d9247cec2d9ca5541499595a77cfbc24a3bc21ca3c718d8c661b4dcb7f53a  polaris-mic-routing.service
++537aa197fe0db212bbe167e4a8699a0670d2fc87a46a2e59897ea7cc46a449f3a426bb7282894ad36fae644f709739228883e135796dcf4cc3d87f1d335a6a11  polaris-pulse-setup.service
++f7fb0deded8eada52297523083cdd49d7355ddfb2555ed5863bee670128727cff5190cb7224f9eca80f08ee86ea327fa0ce706c530dfaaf0c66bf89bba47bee1  polaris-pulse-default.pa
++a45922e02486a4f230daa9141553f37845fc1fdc38f18086d44582ba0d5b187b42b7d8311a39b82bb73355ead6438c5e28a7e8ba8ba1676ddcd12bd9f64badf4  50-polaris.preset
  "
+diff --git a/device/testing/firmware-xiaomi-polaris/polaris-mic-routing.service b/device/testing/firmware-xiaomi-polaris/polaris-mic-routing.service
+new file mode 100644
+index 0000000000..acb061d0bd
+--- /dev/null
++++ b/device/testing/firmware-xiaomi-polaris/polaris-mic-routing.service
+@@ -0,0 +1,9 @@
++[Unit]
++Description=Polaris mic routing keeper (AMIC -> ADC -> DEC -> AIF1_CAP -> SLIM TX0 -> MM1+MM2)
++After=sound.target
++[Service]
++Type=simple
++ExecStart=/bin/sh -c 'for i in $(seq 1 100); do [ -e /dev/snd/controlC0 ] && break; sleep 0.2; done; while true; do amixer -c 0 sset "MultiMedia1 Mixer SLIMBUS_0_TX" on; amixer -c 0 sset "MultiMedia2 Mixer SLIMBUS_0_TX" on; amixer -c 0 sset "ADC MUX0" "AMIC"; amixer -c 0 sset "ADC MUX1" "AMIC"; amixer -c 0 sset "CDC_IF TX0 MUX" "DEC0"; amixer -c 0 sset "CDC_IF TX1 MUX" "DEC1"; amixer -c 0 sset "AIF1_CAP Mixer SLIM TX0" on; amixer -c 0 sset "AMIC MUX0" "ADC1"; amixer -c 0 sset "AMIC MUX1" "ADC2"; amixer -c 0 sset "ADC1" 20; amixer -c 0 sset "ADC2" 20; sleep 10; done'
++Restart=always
++[Install]
++WantedBy=multi-user.target
+diff --git a/device/testing/firmware-xiaomi-polaris/polaris-pulse-default.pa b/device/testing/firmware-xiaomi-polaris/polaris-pulse-default.pa
+new file mode 100644
+index 0000000000..9fc99191f1
+--- /dev/null
++++ b/device/testing/firmware-xiaomi-polaris/polaris-pulse-default.pa
+@@ -0,0 +1,8 @@
++# Polaris ALSA sink + source (output MM3 hw:0,2 / input MM2 hw:0,1)
++load-module module-alsa-sink device=hw:0,2 sink_name=polaris_spk rate=48000
++set-default-sink polaris_spk
++set-sink-volume polaris_spk 100%
++set-sink-mute polaris_spk 0
++load-module module-alsa-source device=hw:0,1 source_name=polaris_mic rate=48000
++set-default-source polaris_mic
++set-source-volume polaris_mic 100%
+diff --git a/device/testing/firmware-xiaomi-polaris/polaris-pulse-setup.service b/device/testing/firmware-xiaomi-polaris/polaris-pulse-setup.service
+new file mode 100644
+index 0000000000..0fab8a7d87
+--- /dev/null
++++ b/device/testing/firmware-xiaomi-polaris/polaris-pulse-setup.service
+@@ -0,0 +1,11 @@
++[Unit]
++Description=Polaris PulseAudio setup (load ALSA sink + default)
++After=sound.target
++[Service]
++Type=oneshot
++User=user
++ExecStart=/bin/sh -c 'for i in $(seq 1 300); do [ -e /dev/snd/controlC0 ] && break; sleep 0.2; done; for i in $(seq 1 150); do amixer -c 0 sset "QUAT_MI2S_RX Audio Mixer MultiMedia1" on >/dev/null 2>&1; amixer -c 0 sget "QUAT_MI2S_RX Audio Mixer MultiMedia1" 2>/dev/null | grep -q on && break; sleep 0.5; done; U=$(id -u user); export XDG_RUNTIME_DIR=/run/user/$U; for i in $(seq 1 300); do pactl info >/dev/null 2>&1 && break; sleep 1; done; pactl load-module module-alsa-sink device=hw:0,0 sink_name=polaris_spk rate=48000 >/dev/null 2>&1; sleep 2; pactl suspend-sink polaris_spk 1; sleep 1; pactl suspend-sink polaris_spk 0; sleep 1; pactl set-default-sink polaris_spk; pactl set-sink-volume polaris_spk 100%; pactl set-sink-mute polaris_spk 0'
++Restart=on-failure
++RestartSec=10
++[Install]
++WantedBy=multi-user.target
+diff --git a/device/testing/firmware-xiaomi-polaris/polaris-speaker-routing.service b/device/testing/firmware-xiaomi-polaris/polaris-speaker-routing.service
+new file mode 100644
+index 0000000000..86e93ecb4a
+--- /dev/null
++++ b/device/testing/firmware-xiaomi-polaris/polaris-speaker-routing.service
+@@ -0,0 +1,9 @@
++[Unit]
++Description=Polaris speaker routing keeper (QUAT_MI2S_RX -> TAS2559, MM1+MM3)
++After=sound.target
++[Service]
++Type=simple
++ExecStart=/bin/sh -c 'for i in $(seq 1 100); do [ -e /dev/snd/controlC0 ] && break; sleep 0.2; done; while true; do amixer -c 0 sset "QUAT_MI2S_RX Audio Mixer MultiMedia1" on; amixer -c 0 sset "QUAT_MI2S_RX Audio Mixer MultiMedia3" on; sleep 10; done'
++Restart=always
++[Install]
++WantedBy=multi-user.target
