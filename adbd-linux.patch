@@ -11,6 +11,42 @@ index f446b1b..ae9c164 100644
  	#g++ -fPIC $(CXXFLAGS) $^ -L ../libcutils/*.o ../base/*.o ../libcrypto_utils/*.o -lpthread -lresolv -lcrypto -lssl -lutil -o $@
  
  xdg-adbd: xdg-adbd.c
+diff --git a/adb/services.cpp b/adb/services.cpp
+index 8496dcd..0e55e1a 100644
+--- a/adb/services.cpp
++++ b/adb/services.cpp
+@@ -167,6 +167,31 @@ static bool reboot_service_impl(int fd, const char* arg) {
+         return false;
+     }
+ 
++    // ADB_NON_ANDROID build: property_set() above is a no-op stub (there is
++    // no property service on postmarketOS), so without this the device would
++    // never reboot and this service would just pause() forever.  Do the
++    // reboot for real.  /sbin/reboot -> systemctl: when invoked through the
++    // "reboot" name systemd accepts the Android-style reason as a positional
++    // argument and passes it as the kernel reboot argument, which is what
++    // actually drops this device into fastboot (verified on-device: ~10s).
++    pid_t pid = fork();
++    if (pid < 0) {
++        WriteFdFmt(fd, "reboot fork failed: %d\n", errno);
++        return false;
++    }
++    if (pid == 0) {
++        if (reboot_arg[0] != '\0') {
++            execl("/sbin/reboot", "reboot", reboot_arg, (char*)nullptr);
++            // fallback: systemd's explicit reboot-argument option
++            execl("/usr/bin/systemctl", "systemctl", "reboot",
++                  "--reboot-argument", reboot_arg, (char*)nullptr);
++        } else {
++            execl("/sbin/reboot", "reboot", (char*)nullptr);
++            execl("/usr/bin/systemctl", "systemctl", "reboot", (char*)nullptr);
++        }
++        _exit(1);
++    }
++
+     return true;
+ }
+ 
 diff --git a/libcrypto_utils/android_pubkey.c b/libcrypto_utils/android_pubkey.c
 index cdad40c..88678d4 100644
 --- a/libcrypto_utils/android_pubkey.c

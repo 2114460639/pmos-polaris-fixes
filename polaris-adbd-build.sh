@@ -32,15 +32,28 @@ if [ ! -d adbd-linux/.git ]; then
 fi
 cd adbd-linux
 git checkout -- . 2>/dev/null || true
-git apply "$REPO_DIR/adbd-linux-openssl3.patch"
+# 合并补丁：OpenSSL 1.0 -> 1.1+/3.x API、Makefile 静态链接修复、
+# 以及 reboot 服务修复（property_set 是空桩，改为 fork+execl /sbin/reboot，
+# 见 polaris-adbd-README.md）
+git apply "$REPO_DIR/adbd-linux.patch"
 cd "$WORK"
 
 # 2. OpenSSL 3 静态库（aarch64）——adbd 上游只兼容 OpenSSL 1.0，补丁已改为 1.1+/3.x API
 if [ ! -f "$PREFIX/lib/libcrypto.a" ]; then
     if [ ! -f openssl-$OPENSSL_VER.tar.gz ]; then
-        # 先下到 .part 再改名，避免中断的半成品被当成完整包
-        curl -fL --http1.1 --retry 5 --retry-all-errors -o openssl-$OPENSSL_VER.tar.gz.part \
-            https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VER/openssl-$OPENSSL_VER.tar.gz
+        # 先下到 .part 再改名，避免中断的半成品被当成完整包。
+        # github releases 直连经常卡死（实测 0 字节超时）：官方失败后自动
+        # 切 gh-proxy 镜像（2026-10-01 实测镜像秒下）。
+        url_base=https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VER/openssl-$OPENSSL_VER.tar.gz
+        for url in "$url_base" "https://gh-proxy.com/$url_base"; do
+            echo "downloading openssl from $url"
+            if curl -fL --http1.1 --connect-timeout 15 --retry 3 --retry-all-errors \
+                -o openssl-$OPENSSL_VER.tar.gz.part "$url"; then
+                break
+            fi
+        done
+        [ -s openssl-$OPENSSL_VER.tar.gz.part ] || {
+            echo "openssl download failed" >&2; exit 1; }
         mv openssl-$OPENSSL_VER.tar.gz.part openssl-$OPENSSL_VER.tar.gz
     fi
     rm -rf openssl-$OPENSSL_VER
