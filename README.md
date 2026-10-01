@@ -534,6 +534,7 @@ pmbootstrap shutdown
 | configfs 里 `ln -s functions/ffs.adb configs/c.1/` 失败（ENOENT） | ①UDC 绑定期间禁止创建函数 symlink；②configfs symlink 目标**相对 cwd 解析**，在家目录执行必然失败 | 先 `echo "" > UDC` 解绑，`cd configs/c.1` 后再 ln，最后重新 bind |
 | `adb devices` 空、宿主机只有 NCM 接口（bInterfaceClass 02/0a） | ffs symlink 没进 `configs/c.1`（绑定期 ln 失败），枚举里根本没有 adb 接口（缺 class ff） | 看 `journalctl -u polaris-adbd` 的 `LN_RC`；按上一行修好后重跑 |
 | adbd 崩溃后宿主机 adb 掉线 | ffs ep0 关闭导致 function 失效 | 脚本守护循环自动重启 adbd 并重绑 UDC |
+| `adb devices` 显示状态 `host`、scrcpy 报 `state=host` 拒连 | 非 Android 目标的 banner 默认是 `"host"`（adb_trace.cpp 的 `__ANDROID__` 条件不成立），宿主机 adb 解析 banner 首字段不匹配就落到 kCsHost | adbd 启动加 `--device_banner device`（本仓库脚本已带） |
 | 包装了但 `polaris-adbd.service` 不自启 | systemd preset 只对**新安装的 unit** 生效，出厂 `99-default.preset` 是 `disable *`，首次安装时把 apk 刚放进 wants 的软链删了 | 包内自带 `55-adbd-polaris.preset` 写 `enable polaris-adbd.service`（preset 首个匹配生效），与 firmware 包 `50-polaris.preset` 同款 |
 | 旧部署方式（`/tmp/adbd` + `systemd-run`）重启后静默失效 | `/tmp` 重启即清、transient unit 重启即失，脚本文件没了 unit 启动即退出且 `--collect` 自动清理，连日志都看不到 | 升级为 pmaports 包：`/usr/bin/adbd` + `/usr/sbin/polaris-adbd-setup` + 常驻 systemd 单元 |
 | `adb reboot` 命令返回成功但设备不动 | adbd 的 reboot 服务调 `property_set("sys.powerctl",…)`，`ADB_NON_ANDROID` 构建里它是直接 `return 0` 的空桩，服务端还 `pause()` 干等 | `adbd-linux.patch` 改为 `fork()+execl("/sbin/reboot", "reboot", <reason>)`，失败回退 `systemctl reboot --reboot-argument`（`adbd-polaris-1-r3`） |
