@@ -2,13 +2,13 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1.0-rc1（sdm845-mainline/linux）
 - 环境：pmbootstrap 3.11.1，channel `systemd-v26.06`，UI `phosh`
-- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化）、一键脚本 `build.sh`、完整补丁 `pmaports-xiaomi-polaris.patch`（28 个文件变更，可一步 `git apply`）、ADB 方案（`polaris-adbd-build.sh` + `polaris-adbd-setup.sh` + `adbd-linux-openssl3.patch`，见「一、7」）
+- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化）、一键脚本 `build.sh`、完整补丁 `pmaports-xiaomi-polaris.patch`（28 个文件变更，可一步 `git apply`）、ADB 方案（`polaris-adbd-build.sh` + `polaris-adbd-setup.sh` + `adbd-linux.patch`，已固化为 pmaports 包 `adbd-polaris` + systemd 开机自启，见「一、7」）
 - **一键构建**：`PROXY=http://127.0.0.1:7890 ./build.sh`（= 打补丁 + checksum + 构建三个包；`DO_INSTALL=1` 生成镜像、`DO_FLASH=1` 再刷机）
 - 本仓库**不含二进制固件**：`wlanmdsp-01387.mbn` 属专有二进制，不宜再分发，需按「二、2」自备
 - **验收状态：2026-09-27 全新刷机（fastboot 全量）验证通过** —— 屏幕/触摸正常、GPU 无错、WiFi 5G 866.7Mbps 满速、GUI 音频 + 浏览器网页 mic/扬声器均通过、录音正常、电池 99%。开箱即用达成。
 - **摄像头补丁（2026-09-29 验证）**：IMX363 主摄已出图，`polaris-camera.patch` 见「一、3」与「四」。
 - **系统语言 / 目录名（2026-09-30 固化）**：界面默认中文、默认文件夹名保持英文、内置中文字体，见「一、6」。
-- **ADB 调试（2026-10-01 验证）**：postmarketOS 上跑通 adbd（USB functionfs，与 NCM 网络共存），宿主机 `adb shell` 验证通过，见「一、7」与「二、3.7」。
+- **ADB 调试（2026-10-01 验证并固化）**：postmarketOS 上跑通 adbd（USB functionfs，与 NCM 网络共存），已打包为 `adbd-polaris` 包随刷机镜像开机自启；`adb devices`/`adb shell`/`adb reboot bootloader` 实测通过，见「一、7」与「二、3.7」。
 
 ## 〇、功能支持情况（2026-09-27 实测）
 
@@ -20,7 +20,7 @@
 | Architecture 架构 | aarch64 | — |
 | Released 发布年份 | 2018 | — |
 | USB Net USB 网络 | Y | — |
-| ADB adb 调试 | Y | ✅ adbd over USB functionfs（与 NCM 网络共存），`adb devices`/`adb shell` 验证通过（2026-10-01，见「一、7」） |
+| ADB adb 调试 | Y | ✅ adbd over USB functionfs（与 NCM 网络共存），已打包 `adbd-polaris` 随镜像开机自启；`adb devices`/`shell`/`reboot bootloader` 验证通过（2026-10-01，见「一、7」） |
 | Flashing 刷机 | Y | — |
 | Touch 触控 | P | 全新刷机后触摸正常工作 |
 | Screen 屏幕 | P | ✅ 修复开机黑屏（nt35596s prepare_prev_first 补丁），显示正常正常工作 |
@@ -236,7 +236,7 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 - **中文字体**：`device-xiaomi-polaris` 的 `depends` 增加 `font-noto-cjk`。
 - 以上三处改的是 `device/testing/device-xiaomi-polaris/`（`pkgrel` 0→1），已包含在 `pmaports-xiaomi-polaris.patch` 中。
 
-### 7. ADB 调试（adbd over USB functionfs——已跑通，纯用户态，无内核补丁）
+### 7. ADB 调试（adbd over USB functionfs——已跑通并固化进刷机包，纯用户态，无内核补丁）
 背景：参考博客园《Linux usb 7. Linux 配置 ADBD》（<https://www.cnblogs.com/pwl999/p/15675582.html>）的 configfs + functionfs 方案，在 pmOS 上跑 `adbd`，让宿主机用 `adb shell` 调试手机，**同时保留 pmOS 自带的 NCM USB 网络**（`ssh user@172.16.42.1` 不受影响）。
 
 前提（pmOS 默认即满足，无需改内核）：
@@ -244,18 +244,30 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 - 现有 `g1` gadget 在跑 NCM 网络（pmOS 开机自动配置）
 
 方案（2026-10-01 在 pmOS v26.06 + 7.1.0-rc1-sdm845 + 宿主机 adb 34.0.5 实测通过）：
-1. **adbd**：文章推荐的 [tonyho/adbd-linux](https://github.com/tonyho/adbd-linux) 交叉编译为 **aarch64 全静态二进制**。上游只兼容 OpenSSL 1.0（直接摸 `RSA`/`BIGNUM` 内部结构），补丁 `adbd-linux-openssl3.patch` 改为 `RSA_set0_key`/`RSA_get0_key`/`BN_bn2bin` 等 1.1+/3.x API，配宿主机自编的 OpenSSL 3.3.2 静态库。构建脚本 `polaris-adbd-build.sh` 一键完成（含浅克隆/代理回退/断点防半成品）。
+1. **adbd**：文章推荐的 [tonyho/adbd-linux](https://github.com/tonyho/adbd-linux) 交叉编译为 **aarch64 全静态二进制**。`adbd-linux.patch` 包含三处源码修改：上游只兼容 OpenSSL 1.0（直接摸 `RSA`/`BIGNUM` 内部结构）→ 改为 `RSA_set0_key`/`RSA_get0_key`/`BN_bn2bin` 等 1.1+/3.x API，配宿主机自编的 OpenSSL 3.3.2 静态库（官方源卡死自动切 gh-proxy 镜像）；Makefile 静态链接修复；**reboot 服务修复**（`property_set` 是空桩，`adb reboot` 原本无效 → 改 `fork()+execl("/sbin/reboot", …)`）。构建脚本 `polaris-adbd-build.sh` 一键完成（含浅克隆/代理回退/断点防半成品）。
 2. **gadget**：把 `ffs.adb` function 加进现有 `g1` 的 `configs/c.1`（与 `ncm.usb0` 并列），挂载 functionfs `/dev/usb-ffs/adb`，启动 adbd（其 usb_ffs 线程会立即向 ep0 写入 USB 描述符），再绑定 UDC。
-3. **运行方式**：`polaris-adbd-setup.sh` 必须用 **`systemd-run` 独立 unit** 运行，脚本内含网络看门狗（UDC 掉线 6 秒内强制重绑，ffs 绑不上自动剔除只恢复 NCM）+ adbd 守护循环，任何失败都不会把设备锁死。日志在手机 `/tmp/adbd-setup.log`。
+3. **运行方式（2026-10-01 升级：打包 + systemd 开机自启）**：固化为 pmaports 包 `adbd-polaris-1-r3`
+   （`pmaports-console/device/testing/adbd-polaris/`，由 `device-xiaomi-polaris-7-r9` 挂依赖进镜像），
+   systemd 单元 `polaris-adbd.service` 开机自启。脚本内含网络看门狗（UDC 掉线 6 秒内强制重绑，
+   ffs 绑不上自动剔除只恢复 NCM）+ adbd 守护循环，任何失败都不会把设备锁死。
+   日志 `journalctl -u polaris-adbd`。**旧的 `/tmp` + `systemd-run` 手动方式已废弃**
+   （重启即失），详见 `polaris-adbd-README.md`。
 
-验证结果：
+验证结果（含开机自启，全部真机实测）：
 ```bash
 $ adb devices
 postmarketOS    host
 $ adb shell uname -a
 Linux xiaomi-polaris 7.1.0-rc1-sdm845 ... aarch64 GNU/Linux
+# 重启后无需任何人工干预：service active/enabled、adb devices 自动重新出现
 ```
-`ALLOW_ADBD_NO_AUTH` + 非 Android property stub → 运行时无需授权，`adb` 直连。注意 adbd/脚本都在 `/tmp`，**重启后需重新执行**（持久化建议：移入 `/usr/local` + 开机 systemd unit，见 `polaris-adbd-setup.sh` 头部注释）。
+`ALLOW_ADBD_NO_AUTH` + 非 Android property stub → 运行时无需授权，`adb` 直连。
+
+**`reboot bootloader` 整合（实测 10 秒进 fastboot，无需 wrapper）**：
+`sudo reboot bootloader`、`adb reboot bootloader`、`adb shell reboot bootloader`
+三种写法开箱即用；长命令 `systemctl reboot --reboot-argument=bootloader` 同样有效。
+唯一不行的是 `systemctl reboot bootloader`（直接用 systemctl 名报 `Too many arguments`）——
+systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参数当 reboot argument。
 
 ## 二、从零复现（逐条执行）
 
@@ -406,23 +418,35 @@ pmbootstrap checksum firmware-xiaomi-polaris && pmbootstrap build --force firmwa
 ```bash
 # ① 宿主机交叉编译 adbd（Debian：apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu make perl curl git）
 ./polaris-adbd-build.sh                        # 产出 adbd-build/adbd-linux/adb/adbd（aarch64 静态）
-#    需要代理时：export http_proxy=http://<host>:<port> https_proxy=$http_proxy
-#    （git 克隆可用 GIT_CONFIG_* 注入，curl 走上面的环境变量）
+#    openssl 源官方卡死会自动切 gh-proxy 镜像；需要代理时 export http(s)_proxy=...
 
-# ② 部署到手机（USB 网络已通，172.16.42.1）
-sshpass -p password scp adbd-build/adbd-linux/adb/adbd user@172.16.42.1:/tmp/adbd
+# ② 主路径：打进 console 刷机包（开机自启，见 ~/pmos-polaris-flash-console）
+cp adbd-build/adbd-linux/adb/adbd  ~/pmaports-console/device/testing/adbd-polaris/adbd
+aarch64-linux-gnu-strip --strip-all ~/pmaports-console/device/testing/adbd-polaris/adbd
+#    源码有改动时同步 polaris-adbd-setup.sh / polaris-adbd.service 后：
+pmbootstrap -c ~/.config/pmbootstrap_console.cfg checksum adbd-polaris
+pmbootstrap -c ~/.config/pmbootstrap_console.cfg build adbd-polaris --arch aarch64
+pmbootstrap -y -c ~/.config/pmbootstrap_console.cfg install --password password
+#    产物镜像：~/pmos-polaris-flash-console/images/（刷入即带 adbd）
+
+# ③ 调试路径：手动装到正在跑的系统（= 包内同款文件与 service）
+sshpass -p password scp adbd-build/adbd-linux/adb/adbd user@172.16.42.1:/tmp/adbd-pkg
 sshpass -p password scp polaris-adbd-setup.sh           user@172.16.42.1:/tmp/
-
-# ③ 运行（必须 systemd-run 独立 unit，勿直接在 ssh 里前台跑！）
-sshpass -p password ssh user@172.16.42.1 \
-  'sudo systemd-run --unit=pmos-adbd --collect /bin/sh /tmp/polaris-adbd-setup.sh'
-#    日志：手机 /tmp/adbd-setup.log（关注 SETUP_OK / LN_RC=0 / GUARDIAN）
+sshpass -p password scp <pmaports>/polaris-adbd.service user@172.16.42.1:/tmp/
+sshpass -p password ssh user@172.16.42.1 '
+  sudo install -m755 /tmp/adbd-pkg /usr/bin/adbd &&
+  sudo install -m755 /tmp/polaris-adbd-setup.sh /usr/sbin/polaris-adbd-setup &&
+  sudo install -m644 /tmp/polaris-adbd.service /usr/lib/systemd/system/ &&
+  sudo systemctl daemon-reload && sudo systemctl enable --now polaris-adbd'
+#    日志：journalctl -u polaris-adbd（关注 SETUP_OK / ADBD_UP / WD / GUARDIAN）
+#    勿再用 systemd-run + /tmp 的旧方式：重启即失
 
 # ④ 宿主机验证
 adb devices && adb shell uname -a              # 期望：postmarketOS 设备 + 内核信息
+adb reboot bootloader                          # 10 秒进 fastboot（本次修复后可用）
 
 # 卸载/停止
-ssh user@172.16.42.1 'sudo systemctl stop pmos-adbd; sudo pkill -x adbd'
+ssh user@172.16.42.1 'sudo systemctl disable --now polaris-adbd'
 ```
 > 内核要求仅一条：`CONFIG_USB_CONFIGFS_F_FS=y`（pmOS 内核默认已开，`zcat /proc/config.gz | grep F_FS` 可查）。
 
@@ -506,10 +530,14 @@ pmbootstrap shutdown
 | 能连 5G 但只有 144.4Mbps（n 模式） | RX/TX Highest = 0，VHT 协商失败（小米 15 是 780） | `polaris-wifi-vht-highest-780.patch` 设 Highest=780 |
 | 内核补丁编译了但设备行为没变 | `flash_kernel` 只刷 boot 分区，rootfs 里 `/usr/lib/modules/` 的模块是旧的 | 升级内核 apk（`apk add --force-overwrite`）让模块也更新 |
 | 7.1-rc1 编译报宏未定义 | `vht_cap_info` 改名 `cap`、`IEEE80211_VHT_CAP_*` 宏移除 | 用裸 hex（0xc0000000 / 0x8）+ 新字段名 |
-| SSH 一断 adbd/gadget 全没了，USB 网络锁死只能重启 | pmOS 用 systemd，会话断开时回收整个 session cgroup，挂在会话下的 adbd/脚本被一起杀 → adbd 死 → functionfs 关闭 → gadget 从宿主机消失 | 用 `systemd-run --unit=... --collect` 起独立 unit 脱离会话 + 网络看门狗兜底 |
+| SSH 一断 adbd/gadget 全没了，USB 网络锁死只能重启 | pmOS 用 systemd，会话断开时回收整个 session cgroup，挂在会话下的 adbd/脚本被一起杀 → adbd 死 → functionfs 关闭 → gadget 从宿主机消失 | 用 system 单元托管（`polaris-adbd.service`，跑在 system manager cgroup，不受会话影响）+ 网络看门狗兜底 |
 | configfs 里 `ln -s functions/ffs.adb configs/c.1/` 失败（ENOENT） | ①UDC 绑定期间禁止创建函数 symlink；②configfs symlink 目标**相对 cwd 解析**，在家目录执行必然失败 | 先 `echo "" > UDC` 解绑，`cd configs/c.1` 后再 ln，最后重新 bind |
-| `adb devices` 空、宿主机只有 NCM 接口（bInterfaceClass 02/0a） | ffs symlink 没进 `configs/c.1`（绑定期 ln 失败），枚举里根本没有 adb 接口（缺 class ff） | 查手机 `/tmp/adbd-setup.log` 的 `LN_RC`；按上一行修好后重跑 |
+| `adb devices` 空、宿主机只有 NCM 接口（bInterfaceClass 02/0a） | ffs symlink 没进 `configs/c.1`（绑定期 ln 失败），枚举里根本没有 adb 接口（缺 class ff） | 看 `journalctl -u polaris-adbd` 的 `LN_RC`；按上一行修好后重跑 |
 | adbd 崩溃后宿主机 adb 掉线 | ffs ep0 关闭导致 function 失效 | 脚本守护循环自动重启 adbd 并重绑 UDC |
+| 包装了但 `polaris-adbd.service` 不自启 | systemd preset 只对**新安装的 unit** 生效，出厂 `99-default.preset` 是 `disable *`，首次安装时把 apk 刚放进 wants 的软链删了 | 包内自带 `55-adbd-polaris.preset` 写 `enable polaris-adbd.service`（preset 首个匹配生效），与 firmware 包 `50-polaris.preset` 同款 |
+| 旧部署方式（`/tmp/adbd` + `systemd-run`）重启后静默失效 | `/tmp` 重启即清、transient unit 重启即失，脚本文件没了 unit 启动即退出且 `--collect` 自动清理，连日志都看不到 | 升级为 pmaports 包：`/usr/bin/adbd` + `/usr/sbin/polaris-adbd-setup` + 常驻 systemd 单元 |
+| `adb reboot` 命令返回成功但设备不动 | adbd 的 reboot 服务调 `property_set("sys.powerctl",…)`，`ADB_NON_ANDROID` 构建里它是直接 `return 0` 的空桩，服务端还 `pause()` 干等 | `adbd-linux.patch` 改为 `fork()+execl("/sbin/reboot", "reboot", <reason>)`，失败回退 `systemctl reboot --reboot-argument`（`adbd-polaris-1-r3`） |
+| `systemctl reboot bootloader` 报 `Too many arguments` | systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参数当 reboot argument，`systemctl` 名下不接受 | 用 `reboot bootloader`（三种写法均实测 10 秒进 fastboot），或长命令 `systemctl reboot --reboot-argument=bootloader` |
 
 ## 四、摄像头结论与遗留问题
 
