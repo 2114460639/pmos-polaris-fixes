@@ -9,6 +9,9 @@
 - **摄像头补丁（2026-09-29 验证）**：IMX363 主摄已出图，`polaris-camera.patch` 见「一、3」与「四」。
 - **系统语言 / 目录名（2026-09-30 固化）**：界面默认中文、默认文件夹名保持英文、内置中文字体，见「一、6」。
 - **ADB 调试（2026-10-01 验证并固化）**：postmarketOS 上跑通 adbd（USB functionfs，与 NCM 网络共存），已打包为 `adbd-polaris` 包随刷机镜像开机自启；`adb devices`/`adb shell`/`adb reboot bootloader` 实测通过，见「一、7」与「二、3.7」。
+- **屏幕亮度（2026-10-01 修复）**：开机极暗根因是 systemd-backlight 恢复的历史亮度（实测低至 40/4095≈1%）；`polaris-backlight-rescue` 开机把 <40% 抬到 40%，console 变体另有电源键 40%→80%→熄屏循环，见「一、8」。
+- **稳定性加固（2026-10-01 固化，device 包 7-r12 真机验证）**：经历一次整机 hang（RCU kthread CPU 饥饿，ssh/adb/GUI 全死、USB 仍枚举）后固化自动取证与恢复三件套——sysctl 自动 panic + PID1 喂硬件看门狗 + 30 秒 CPU 快照，见「一、9」。
+- **从零复现构建（2026-10-01 通过）**：按本仓库方法在干净 pmaports 树上完整重建并刷机（含「关闭摄像头」变体与调试补丁清理），显示/GPU/WiFi/音频/ADB/亮度/加固全部实测通过。
 
 ## 〇、功能支持情况（2026-09-27 实测）
 
@@ -269,6 +272,62 @@ Linux xiaomi-polaris 7.1.0-rc1-sdm845 ... aarch64 GNU/Linux
 唯一不行的是 `systemctl reboot bootloader`（直接用 systemctl 名报 `Too many arguments`）——
 systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参数当 reboot argument。
 
+### 8. 屏幕亮度（开机极暗 → 40% 救援 + 电源键循环——已修复）
+症状：开机后屏幕非常暗，几乎看不清。
+根因：`systemd-backlight` 关机时保存当时亮度、开机由 `systemd-backlight@backlight:backlight.service` 恢复；本机实测保存过的值低到 **40/4095 ≈ 1%**，熄屏关机还会存 0（开机纯黑）。
+
+两种落地形态（均纯用户态，无内核补丁）：
+
+1. **开机亮度救援**（通用，所有 UI 适用；flash2 刷机包采用）
+   `polaris-backlight-rescue.service`（oneshot，`After=systemd-backlight@backlight:backlight.service`）执行 `polaris-backlight-rescue`：15 秒内轮询背光，值 < 40%（4095 → 1638）就抬到 40%，确保每次开机都有可读亮度。文件全文见「二、3.8」。
+2. **电源键亮度循环**（fbkeyboard console 变体；flash-console 刷机包采用）
+   `polaris-keys` 守护把电源键（`pm8941_pwrkey`）改造成亮度循环：
+   ```python
+   BRIGHTNESS_CYCLE = (0.40, 0.80, 0.0)   # 按 1 → 40%(1638)、按 2 → 80%(3276)、按 3 → 熄屏(0)、按 4 → 回 40%……循环
+   ```
+   并在启动时执行 `ensure_min()`（非零且 <40% → 提到 40%，与 ① 同效）；logind 需 `HandlePowerKey=ignore`（`99-polaris.conf`）让出电源键。
+   > 默认 phosh 树的电源键由 logind/Phosh 接管，循环形态只适合无桌面会话的 console 树；普通树用 ① 的救援即可。
+
+真机验证（2026-10-01）：救援 `40 → 1638` 生效；循环两整轮 `1638→3276→0→1638→3276→0` ALL OK。
+> 说明：全新 userdata（无历史值）开机为内核默认 2048/4095 ≈ 50%，高于 40% 下限，救援不干预——预期行为。
+
+### 9. 稳定性：整机 hang 的取证与自动恢复（三件套——2026-10-01 固化）
+事件：一次整机假死——SSH、adb、GUI 全部无响应，只能长按电源重启，而 USB 仍在枚举（`lsusb` 还能看到设备）。
+
+诊断（`journalctl -b -1`，**journal 持久化是关键**）：
+- 内核 call trace：`handle_softirqs → __do_softirq → rcu_gp_kthread → _raw_spin_unlock_irqrestore`
+- RCU 警告：`rcu: Unless rcu_preempt kthread gets sufficient CPU time, OOM is now expected behavior.`
+- 结论：**RCU kthread 被饿死型 hang**（CPU 被占满）→ 网络/文件系统/sshd/adbd/GUI 全部悬死，USB 控制器靠中断仍在枚举
+- 旁证：`at-spi2-registryd: Disabling unresponsive app`；polaris-adbd-setup 守护循环每 3 秒刷屏（嫌疑对象，未定罪）
+
+> **两个误判提醒**：① `lsusb` 显示 `18d1:d001 Xiaomi Mi/Redmi 2 (fastboot)` 是 usbutils 数据库按 PID 的**误标**——该 PID 是 pmOS 自己的 gadget（Product=`Xiaomi Mi Mix2S`、Serial=`postmarketOS`，NCM 正常注册），设备并没有进 fastboot，真 fastboot 是 `18d1:d00d`；② 无任何 suspend 日志，不是熄屏挂起死锁。
+
+修复（三件套，全部打进 `device-xiaomi-polaris` 包，pkgrel 12；文件全文见「二、3.8」）：
+
+| # | 机制 | 落地文件 | 触发后的行为 |
+|---|---|---|---|
+| ① | 自动 panic | `/etc/sysctl.d/90-polaris-crash.conf` | `panic_on_rcu_stall=1`（对症 RCU 饥饿）与 `panic_on_oops=1` → 内核 panic → `panic=120` 自动重启 |
+| ② | 硬件看门狗 | `/etc/systemd/system.conf.d/90-polaris-watchdog.conf` | `RuntimeWatchdogSec=10`：由 **PID1** 喂 `qcom_wdt`；panic 或任何原因喂不上 → **10 秒硬复位**，兜底所有类型 hang（本内核未编译 softlockup/hung_task 检测器，改 config 需全量重编，看门狗覆盖这两类） |
+| ③ | CPU 快照 | `polaris-cpu-snapshot.timer` + `/usr/sbin/polaris-cpu-snapshot` | 每 30 秒把 top CPU 榜写入 `/var/log/polaris-cpu.log`（超 2MB 只留新半），下次 hang 直接指认凶手 |
+
+真机验证（2026-10-01，device 7-r12 刷机后）：
+```text
+panic=120 / panic_on_rcu_stall=1 / panic_on_oops=1
+systemd[1]: Using hardware watchdog /dev/watchdog0: 'qcom_wdt', version 0.
+systemd[1]: Watchdog running with a hardware timeout of 10s.    # /proc/1/fd 可见 PID1 持有 watchdog0
+polaris-cpu-snapshot.timer → active；/var/log/polaris-cpu.log 首条快照已落盘
+```
+
+hang 之后这样查：
+```bash
+journalctl -b -1 | tail -100             # 死前的内核/服务日志
+journalctl -b -1 -p warning..emerg       # 只看警告以上
+sudo tail -100 /var/log/polaris-cpu.log  # 死前 30 秒的 CPU 榜 → 凶手
+```
+多数情况**无需长按**：RCU 饥饿 → ① panic → ② 复位；其它死锁 → ② 直接复位；只有连 USB 中断都死透才需要长按 15 秒。
+
+> **调试补丁清理（2026-10-01 内核 pkgrel 递增构建验证）**：`pmaports-xiaomi-polaris.patch` 仍携带 4 个诊断期补丁——`polaris-soc-pcm-debug`（ASoC PCM 路径 6 个 `pr_err("DBGSTEP…")` 探针，每开一次音频喷 6 条错误级日志）、`polaris-slim-ngd-rxdebug` / `-tiddebug` / `-msgdbg2`（SLIM 总线每条消息 dump）。它们是音频定位期的临时探针，已无用途；复现时建议从 linux 包 `source=` 与 `sha512sums` 中移除（补丁文件可留在目录里）。我们的构建已移除并验证 `dmesg | grep -c DBGSTEP`、`RX msg:` 等全部为 0。
+
 ## 二、从零复现（逐条执行）
 
 ### 0. 前置（版本锁定）
@@ -450,6 +509,152 @@ ssh user@172.16.42.1 'sudo systemctl disable --now polaris-adbd'
 ```
 > 内核要求仅一条：`CONFIG_USB_CONFIGFS_F_FS=y`（pmOS 内核默认已开，`zcat /proc/config.gz | grep F_FS` 可查）。
 
+### 3.8 屏幕亮度与稳定性加固（device 包，无内核补丁）
+
+以下文件全部落在 `device/testing/device-xiaomi-polaris/`（`source=` 列入 + `package()` 安装 + `pkgrel` 递增 + `pmbootstrap checksum device-xiaomi-polaris`），对应「一、8 / 一、9」。构建：`pmbootstrap build device-xiaomi-polaris`（aarch64）→ `pmbootstrap install` → 镜像进刷机包。
+
+**① 亮度救援（「一、8」）**
+
+`polaris-backlight-rescue.service` → `/etc/systemd/system/`：
+```ini
+[Unit]
+Description=Boot backlight rescue (raise restored brightness below 40%%)
+# systemd-backlight@ 在 sysinit 阶段就恢复亮度，排它后面；脚本再轮询兜住恢复晚到的情况
+After=systemd-backlight@backlight:backlight.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/polaris-backlight-rescue
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`polaris-backlight-rescue` → `/usr/sbin/`（`install -m755`）：
+```sh
+#!/bin/sh
+# Boot brightness rescue for xiaomi-polaris.
+# systemd-backlight 恢复的历史值实测低到 40/4095≈1%（熄屏关机还会存 0），
+# 开机把 <40% 的值抬到 40%，保证每次开机屏幕可读。电源键行为不变。
+B=/sys/class/backlight/backlight/brightness
+MAX=/sys/class/backlight/backlight/max_brightness
+
+[ -r "$B" ] || exit 0
+max=$(cat "$MAX" 2>/dev/null)
+[ -n "$max" ] || exit 0
+floor=$((max * 40 / 100))
+
+i=0
+while [ "$i" -lt 15 ]; do
+	b=$(cat "$B" 2>/dev/null)
+	case "$b" in
+		''|*[!0-9]*) exit 0 ;;
+	esac
+	[ "$b" -lt "$floor" ] || exit 0
+	echo "$floor" > "$B" 2>/dev/null
+	i=$((i + 1))
+	sleep 1
+done
+exit 0
+```
+
+**② 稳定性三件套（「一、9」）**
+
+`polaris-crash-sysctl.conf` → `/etc/sysctl.d/90-polaris-crash.conf`：
+```ini
+# RCU 饥饿/oops → panic；panic=120 → 自动重启；期间 PID1 停止喂看门狗 → 10s 硬复位
+# 注：本内核未编译 softlockup/hung_task 检测器，故无对应 sysctl 键（写了会告警）
+kernel.panic = 120
+kernel.panic_on_rcu_stall = 1
+kernel.panic_on_oops = 1
+```
+
+`polaris-watchdog.conf` → `/etc/systemd/system.conf.d/90-polaris-watchdog.conf`：
+```ini
+# PID1 喂 /dev/watchdog（qcom_wdt），半周期一喂；panic 或用户态卡死喂不上 → 硬件复位
+[Manager]
+RuntimeWatchdogSec=10
+```
+
+`polaris-cpu-snapshot` → `/usr/sbin/`（`install -m755`）：
+```sh
+#!/bin/sh
+# 每 30s 记一次 top CPU 榜到 /var/log/polaris-cpu.log（hang 取证用：
+# RCU 饥饿那次因无此类记录无法定罪）。busybox top -b 兼容（无 procps --sort）。
+LOG=/var/log/polaris-cpu.log
+
+{
+	printf '=== %s  load: %s\n' "$(date '+%F %T')" "$(cut -d' ' -f1-3 /proc/loadavg)"
+	top -b -n 1 -d 1 2>/dev/null | head -20
+	echo
+} >>"$LOG" 2>/dev/null
+
+size=$(stat -c%s "$LOG" 2>/dev/null || echo 0)
+if [ "$size" -gt 2097152 ]; then
+	tail -c 1048576 "$LOG" >"$LOG.new" 2>/dev/null && mv "$LOG.new" "$LOG"
+fi
+exit 0
+```
+
+`polaris-cpu-snapshot.service` → `/etc/systemd/system/`：
+```ini
+[Unit]
+Description=Polaris CPU snapshot (hang forensics)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/polaris-cpu-snapshot
+```
+
+`polaris-cpu-snapshot.timer` → `/etc/systemd/system/`：
+```ini
+[Unit]
+Description=Record top CPU consumers every 30s for hang forensics
+
+[Timer]
+OnBootSec=45
+OnUnitActiveSec=30
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
+```
+
+**APKBUILD 接入**（`device-xiaomi-polaris`，pkgrel 递增）：
+```sh
+# source= 追加：
+#   polaris-backlight-rescue
+#   polaris-backlight-rescue.service
+#   polaris-crash-sysctl.conf
+#   polaris-watchdog.conf
+#   polaris-cpu-snapshot
+#   polaris-cpu-snapshot.service
+#   polaris-cpu-snapshot.timer
+
+# package() 追加（wants 软链必须放进包里——preset 对已安装 unit 不生效，软链要随包重建）：
+install -Dm755 "$srcdir"/polaris-backlight-rescue \
+	"$pkgdir"/usr/sbin/polaris-backlight-rescue
+install -Dm644 "$srcdir"/polaris-backlight-rescue.service \
+	"$pkgdir"/etc/systemd/system/polaris-backlight-rescue.service
+install -d "$pkgdir"/etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/polaris-backlight-rescue.service \
+	"$pkgdir"/etc/systemd/system/multi-user.target.wants/polaris-backlight-rescue.service
+install -Dm644 "$srcdir"/polaris-crash-sysctl.conf \
+	"$pkgdir"/etc/sysctl.d/90-polaris-crash.conf
+install -Dm644 "$srcdir"/polaris-watchdog.conf \
+	"$pkgdir"/etc/systemd/system.conf.d/90-polaris-watchdog.conf
+install -Dm755 "$srcdir"/polaris-cpu-snapshot \
+	"$pkgdir"/usr/sbin/polaris-cpu-snapshot
+install -Dm644 "$srcdir"/polaris-cpu-snapshot.service \
+	"$pkgdir"/etc/systemd/system/polaris-cpu-snapshot.service
+install -Dm644 "$srcdir"/polaris-cpu-snapshot.timer \
+	"$pkgdir"/etc/systemd/system/polaris-cpu-snapshot.timer
+install -d "$pkgdir"/etc/systemd/system/timers.target.wants
+ln -sf /etc/systemd/system/polaris-cpu-snapshot.timer \
+	"$pkgdir"/etc/systemd/system/timers.target.wants/polaris-cpu-snapshot.timer
+```
+
 ### 4. 构建（其余）
 ```bash
 pmbootstrap checksum firmware-xiaomi-polaris
@@ -539,6 +744,10 @@ pmbootstrap shutdown
 | 旧部署方式（`/tmp/adbd` + `systemd-run`）重启后静默失效 | `/tmp` 重启即清、transient unit 重启即失，脚本文件没了 unit 启动即退出且 `--collect` 自动清理，连日志都看不到 | 升级为 pmaports 包：`/usr/bin/adbd` + `/usr/sbin/polaris-adbd-setup` + 常驻 systemd 单元 |
 | `adb reboot` 命令返回成功但设备不动 | adbd 的 reboot 服务调 `property_set("sys.powerctl",…)`，`ADB_NON_ANDROID` 构建里它是直接 `return 0` 的空桩，服务端还 `pause()` 干等 | `adbd-linux.patch` 改为 `fork()+execl("/sbin/reboot", "reboot", <reason>)`，失败回退 `systemctl reboot --reboot-argument`（`adbd-polaris-1-r3`） |
 | `systemctl reboot bootloader` 报 `Too many arguments` | systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参数当 reboot argument，`systemctl` 名下不接受 | 用 `reboot bootloader`（三种写法均实测 10 秒进 fastboot），或长命令 `systemctl reboot --reboot-argument=bootloader` |
+| 开机屏幕极暗（≈1%）甚至全黑 | `systemd-backlight` 恢复关机时保存的亮度（存过 40/4095，熄屏关机会存 0） | `polaris-backlight-rescue` 开机把 <40% 抬到 40%（「一、8」/「二、3.8」） |
+| 整机 hang：ssh/adb/GUI 全死，但 `lsusb` 还能看到设备 | 内核 CPU 饥饿（RCU kthread 拿不到时间片），USB 中断还活着；且 `18d1:d001` 被 lsusb 数据库误标 fastboot（实为 pmOS gadget，没进 bootloader，真 fastboot 是 `d00d`） | `journalctl -b -1` 取证 + 三件套自动恢复（「一、9」）；连 USB 中断都死透才长按 15 秒 |
+| `dmesg \| grep -c` 验证输出 0（假阴性） | `dmesg_restrict=1` 时非 root 的 `dmesg` 直接失败，管道里 `grep -c` 对空输入照样输出 0 | 用 `sudo dmesg` 重验 |
+| `systemctl show systemd` 看不到 `RuntimeWatchdogUSec`（v261），以为看门狗没生效 | 该版本 show 不列出此属性 | 以 `systemd-analyze cat-config systemd/system` + `journalctl -b \| grep watchdog` + `ls /proc/1/fd` 为准（日志会打 `Using hardware watchdog … qcom_wdt`） |
 
 ## 四、摄像头结论与遗留问题
 
