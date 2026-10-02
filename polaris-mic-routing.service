@@ -1,9 +1,0 @@
-[Unit]
-Description=Polaris mic routing keeper (AMIC -> ADC -> DEC -> AIF1_CAP -> SLIM TX0 -> MM1+MM2)
-After=sound.target
-[Service]
-Type=simple
-ExecStart=/bin/sh -c 'for i in $(seq 1 100); do [ -e /dev/snd/controlC0 ] && break; sleep 0.2; done; while true; do amixer -c 0 sset "MultiMedia1 Mixer SLIMBUS_0_TX" on; amixer -c 0 sset "MultiMedia2 Mixer SLIMBUS_0_TX" on; amixer -c 0 sset "ADC MUX0" "AMIC"; amixer -c 0 sset "ADC MUX1" "AMIC"; amixer -c 0 sset "CDC_IF TX0 MUX" "DEC0"; amixer -c 0 sset "CDC_IF TX1 MUX" "DEC1"; amixer -c 0 sset "AIF1_CAP Mixer SLIM TX0" on; amixer -c 0 sset "AMIC MUX0" "ADC1"; amixer -c 0 sset "AMIC MUX1" "ADC2"; amixer -c 0 sset "ADC1" 20; amixer -c 0 sset "ADC2" 20; sleep 10; done'
-Restart=always
-[Install]
-WantedBy=multi-user.target

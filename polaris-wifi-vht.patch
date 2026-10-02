@@ -1,0 +1,12 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -5031,6 +5031,9 @@
+ 		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
+ 		band->ht_cap = ht_cap;
+ 		band->vht_cap = vht_cap;
++                band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(780); /* 780 = 0x30c: per-NSS MCS ceiling advertised by reference phones (was 0 -> VHT never negotiated, 144Mbps n fallback) */
++                band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(780); /* ditto for TX */
++                band->vht_cap.cap = cpu_to_le32(0x3381f9b2); /* pristine 80MHz cap: clears EXT_BANDWIDTH 0xc0000000 + SUPP_80_80MHZ 0x8 (illegal combo = AP reason 18) */
+ 	}
+ }
+ 

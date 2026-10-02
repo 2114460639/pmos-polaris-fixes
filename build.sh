@@ -5,7 +5,7 @@
 #
 #  用法：
 #    ./build.sh                              打补丁 + 构建三个包
-#    WITH_CAMERA=0 ./build.sh                不带摄像头（移除 camera 补丁并在设备树关闭）
+#    WITH_CAMERA=1 ./build.sh                带摄像头（IMX363 主摄；默认跟随 patch 基线 = 关）
 #    DO_INSTALL=1 ./build.sh                 额外生成 rootfs 镜像
 #    DO_FLASH=1   ./build.sh                 再刷进手机（需先进 fastboot）
 #    PROXY=http://127.0.0.1:7890 ./build.sh  指定代理
@@ -64,24 +64,28 @@ if git -C "$PMAPORTS" apply --check "$PATCH" 2>/dev/null; then
     git -C "$PMAPORTS" apply "$PATCH"
 elif git -C "$PMAPORTS" apply --check -R "$PATCH" 2>/dev/null; then
     info "补丁已应用过，跳过"
+elif [ -f "$FW_DIR/Polaris-HiFi.conf" ]; then
+    # 1.5 摄像头开关调整过 source=（或文件增删）后，-R 精确校验不再通过；
+    # 以 firmware 包的标志性新增文件判断补丁已应用，继续即可。
+    info "补丁已应用过（摄像头开关已调整），跳过 apply"
 else
     die "补丁无法应用（与上游冲突）。请按 README「二、从零复现」手动处理"
 fi
 
-# ---------- 1.5 可选：关闭摄像头（WITH_CAMERA=0） ----------
-# 默认带 polaris-camera.patch（IMX363 主摄）。不带摄像头的构建用
-# WITH_CAMERA=0：从 source= 摘掉 camera 补丁，改挂
-# polaris-camera-disabled.patch（设备树显式 &camss/&cci disabled）。
-# 两个方向都幂等，可反复执行。
-if [ "${WITH_CAMERA:-1}" = 0 ]; then
-    KDIR="$PMAPORTS/device/community/linux-postmarketos-qcom-sdm845"
-    if [ -f "$KDIR/polaris-camera.patch" ] || grep -q '^ *polaris-camera\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
-        info "WITH_CAMERA=0: 移除 polaris-camera.patch（摄像头关闭）"
-        rm -f "$KDIR/polaris-camera.patch"
+# ---------- 1.5 摄像头开关（显式 WITH_CAMERA=0/1 才动树，默认完全跳过） ----------
+# build.sh 是最终构建产物，不应影响更新过程：不设置 WITH_CAMERA 时本块
+# 一个字符都不改（树保持 patch 基线或上次显式切换的状态）。两个方向幂等：
+#   WITH_CAMERA=0  只从 source= 摘 camera 补丁 + 挂 camera-disabled（补丁文件保留）
+#   WITH_CAMERA=1  只从 source= 摘 camera-disabled + 挂 polaris-camera.patch（IMX363 主摄）
+if [ -n "${WITH_CAMERA:-}" ]; then
+KDIR="$PMAPORTS/device/community/linux-postmarketos-qcom-sdm845"
+if [ "$WITH_CAMERA" = 0 ]; then
+    if [ -f "$KDIR/polaris-camera.patch" ] || grep -q '^[[:space:]]*polaris-camera\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
+        info "WITH_CAMERA=0: 从 source= 移除 polaris-camera.patch（摄像头关闭；文件保留为启用素材）"
         sed -i '/^[[:space:]]*polaris-camera\.patch[[:space:]]*$/d' "$KDIR/APKBUILD"
     fi
     if [ -f "$HERE/polaris-camera-disabled.patch" ]; then
-        if ! grep -q 'polaris-camera-disabled\.patch' "$KDIR/APKBUILD" 2>/dev/null; then
+        if ! grep -q '^[[:space:]]*polaris-camera-disabled\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
             cp "$HERE/polaris-camera-disabled.patch" "$KDIR/"
             # 插到 polaris-firmware-path.patch 之后（audio 补丁接在其 EOF 上，顺序要保持）
             sed -i 's|^\([[:space:]]*\)polaris-firmware-path\.patch$|\1polaris-firmware-path.patch\n\1polaris-camera-disabled.patch|' "$KDIR/APKBUILD"
@@ -89,7 +93,21 @@ if [ "${WITH_CAMERA:-1}" = 0 ]; then
     else
         warn "缺少 $HERE/polaris-camera-disabled.patch，仅移除 camera 补丁（设备树不显式关闭）"
     fi
+else
+    KDIR="$PMAPORTS/device/community/linux-postmarketos-qcom-sdm845"
+    if grep -q '^[[:space:]]*polaris-camera-disabled\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
+        info "WITH_CAMERA=1: 从 source= 移除 polaris-camera-disabled.patch（文件保留）"
+        sed -i '/^[[:space:]]*polaris-camera-disabled\.patch[[:space:]]*$/d' "$KDIR/APKBUILD"
+    fi
+    if [ -f "$HERE/polaris-camera.patch" ] && ! grep -q '^[[:space:]]*polaris-camera\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
+        info "WITH_CAMERA=1: 启用 polaris-camera.patch（IMX363 主摄）"
+        cp "$HERE/polaris-camera.patch" "$KDIR/"
+        # 插到 polaris-firmware-path.patch 之后（与 camera-disabled 原位置一致，
+        # audio 补丁的 EOF 上下文依赖此顺序）
+        sed -i 's|^\([[:space:]]*\)polaris-firmware-path\.patch$|\1polaris-firmware-path.patch\n\1polaris-camera.patch|' "$KDIR/APKBUILD"
+    fi
 fi
+fi   # WITH_CAMERA 显式设置才走到这里；未设置则整块跳过
 
 # ---------- 2. 检查二进制固件 ----------
 # wlanmdsp-01387.mbn（WCN3990 WiFi 固件，取自小米 ROM 01387）属专有二进制，
@@ -100,7 +118,7 @@ if [ -f "$FW_BLOB" ]; then
 else
     warn "缺少 $FW_BLOB"
     warn "获取方法见 README「二、2」；若拿不到，可从 firmware APKBUILD 删掉该 source 与 install 行"
-    warn "（5GHz 的决定性修复是 3 个内核补丁，此固件只是版本更新）"
+    warn "（5GHz 的决定性修复是 2 个内核补丁：polaris-wifi-vht + -host-cap-skip-quirk，此固件只是版本更新）"
 fi
 
 # ---------- 2.5 本地仓库版本冲突预检 ----------

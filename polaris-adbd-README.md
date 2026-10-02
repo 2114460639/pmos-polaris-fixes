@@ -28,24 +28,21 @@
 | `polaris-adbd.service` | `/usr/lib/systemd/system/` | 开机自启（`multi-user.target`） |
 | `polaris-adbd.preset` | `system-preset/55-adbd-polaris.preset` | `enable polaris-adbd.service` |
 
-> 本仓库的 `polaris-adbd-setup.sh` 与包内文件**内容一致**（同步副本，便于单独调试部署）；
-> 权威版本在 pmaports 包目录。
+> 权威版本在 pmaports 包目录 `adbd-polaris/`（经本仓库 canonical patch 落树）。
 
-## 文件（本仓库）
+## 构建工具链（2026-10-03 已移除，见 git 历史）
 
-| 文件 | 用途 |
+adbd 二进制已固化进 `adbd-polaris` 包（canonical patch 含二进制），日常复现
+**不需要重新构建**。历史构建工具已从仓库移除，需要时从 git 历史取回：
+
+| 历史文件 | 用途 |
 | --- | --- |
 | `polaris-adbd-build.sh` | 宿主机交叉编译 aarch64 静态 adbd |
 | `adbd-linux.patch` | adbd 源码补丁（OpenSSL 3 适配 + Makefile 链接修复 + **reboot 服务修复**） |
 | `polaris-adbd-setup.sh` | 手机端 gadget 配置 + adbd 守护脚本（= 包内 `/usr/sbin/polaris-adbd-setup`） |
+| `adbd-build/` | 构建工作目录（openssl 源码等，`.gitignore` 不入库） |
 
-## 构建（宿主机）
-
-```sh
-./polaris-adbd-build.sh          # 产物 adbd-build/adbd-linux/adb/adbd
-```
-
-要点：
+重建要点（原理记录）：
 
 - adbd 用文章推荐的 [tonyho/adbd-linux](https://github.com/tonyho/adbd-linux)，
   上游要求 OpenSSL 1.0（直接访问 `RSA`/`BIGNUM` 内部结构），`adbd-linux.patch`
@@ -75,9 +72,10 @@ pmbootstrap -y -c ~/.config/pmbootstrap_console.cfg install --password password
 ### B. 手动部署到正在跑的系统（调试用）
 
 ```sh
-scp adbd-build/adbd-linux/adb/adbd   user@172.16.42.1:/tmp/adbd-pkg
-scp polaris-adbd-setup.sh            user@172.16.42.1:/tmp/
-scp <pmaports>/polaris-adbd.service  user@172.16.42.1:/tmp/
+# adbd 源：已装 adbd 的设备上提取（或 git 历史的构建产物 adbd-build/.../adbd）
+scp other:/usr/bin/adbd                    user@172.16.42.1:/tmp/adbd-pkg
+scp <pmaports>/adbd-polaris/polaris-adbd-setup.sh  user@172.16.42.1:/tmp/
+scp <pmaports>/adbd-polaris/polaris-adbd.service   user@172.16.42.1:/tmp/
 ssh user@172.16.42.1
 sudo install -m755 /tmp/adbd-pkg      /usr/bin/adbd
 sudo install -m755 /tmp/polaris-adbd-setup.sh /usr/sbin/polaris-adbd-setup
@@ -130,8 +128,8 @@ adb shell reboot bootloader       # 进 shell 后
    属新 unit，apk 刚放进去的 `multi-user.target.wants` 软链随即被删
    （症状：包装了但服务不自启）。解法：包内自带
    `55-adbd-polaris.preset` 写 `enable polaris-adbd.service`
-   （preset 首个匹配生效，`55-` 排在 `99-` 前），与 firmware 包
-   `50-polaris.preset` 同款。
+   （preset 首个匹配生效，`55-` 排在 `99-` 前），与当时 firmware 包
+   `50-polaris.preset` 同款（后者已随音频 UCM 重构删除）。
 5. **`/tmp` 重启即清、transient unit 重启即失**：老部署方式（`/tmp/adbd` +
    `systemd-run`）重启后静默失效——脚本文件没了，unit 启动即退出且
    `--collect` 自动清理，连日志都看不到。这就是升级为 pmaports 包的直接原因。

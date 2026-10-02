@@ -1,3 +1,0 @@
-enable polaris-mic-routing.service
-enable polaris-speaker-routing.service
-enable polaris-pulse-setup.service

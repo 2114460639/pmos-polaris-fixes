@@ -1,5 +1,16 @@
---- a/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.402179138 +0800
-+++ b/sound/soc/qcom/qdsp6/q6afe-dai.c	2026-09-26 21:58:35.406179138 +0800
+--- a/sound/soc/qcom/qdsp6/q6afe.c
++++ b/sound/soc/qcom/qdsp6/q6afe.c
+@@ -1103,7 +1103,7 @@
+ 	} else if (result->status > 0) {
+ 		dev_err(afe->dev, "DSP returned error[%x]\n",
+ 			result->status);
+-		ret = -EINVAL;
++		ret = -result->status;
+ 	} else {
+ 		ret = 0;
+ 	}
+--- a/sound/soc/qcom/qdsp6/q6afe-dai.c
++++ b/sound/soc/qcom/qdsp6/q6afe-dai.c
 @@ -15,6 +15,7 @@
  #include "q6dsp-lpass-ports.h"
  #include "q6dsp-common.h"
