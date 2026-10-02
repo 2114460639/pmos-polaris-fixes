@@ -2,8 +2,8 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1.0-rc1（sdm845-mainline/linux）
 - 环境：pmbootstrap 3.11.1，channel `systemd-v26.06`，UI `phosh`
-- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化）、一键脚本 `build.sh`、完整补丁 `pmaports-xiaomi-polaris.patch`（28 个文件变更，可一步 `git apply`）、ADB 方案（`polaris-adbd-build.sh` + `polaris-adbd-setup.sh` + `adbd-linux.patch`，已固化为 pmaports 包 `adbd-polaris` + systemd 开机自启，见「一、7」）
-- **一键构建**：`PROXY=http://127.0.0.1:7890 ./build.sh`（= 打补丁 + checksum + 构建三个包；`DO_INSTALL=1` 生成镜像、`DO_FLASH=1` 再刷机）
+- 本仓库内容：各功能补丁（内核 dts/驱动 + firmware 包 + 用户态固化）、一键脚本 `build.sh`、完整补丁 `pmaports-xiaomi-polaris.patch`（35 个文件变更，可一步 `git apply`；含 adbd 预编译二进制的 git binary patch）、ADB 方案（`polaris-adbd-build.sh` + `polaris-adbd-setup.sh` + `adbd-linux.patch`，已固化为 pmaports 包 `adbd-polaris` + systemd 开机自启，见「一、7」）
+- **一键构建**：`PROXY=http://127.0.0.1:7890 ./build.sh`（= 打补丁 + checksum + 构建三个包；`DO_INSTALL=1` 生成镜像、`DO_FLASH=1` 再刷机；`WITH_CAMERA=0` 不带摄像头并在设备树关闭，见「二、1.5」）
 - 本仓库**不含二进制固件**：`wlanmdsp-01387.mbn` 属专有二进制，不宜再分发，需按「二、2」自备
 - **验收状态：2026-09-27 全新刷机（fastboot 全量）验证通过** —— 屏幕/触摸正常、GPU 无错、WiFi 5G 866.7Mbps 满速、GUI 音频 + 浏览器网页 mic/扬声器均通过、录音正常、电池 99%。开箱即用达成。
 - **摄像头补丁（2026-09-29 验证）**：IMX363 主摄已出图，`polaris-camera.patch` 见「一、3」与「四」。
@@ -12,6 +12,7 @@
 - **屏幕亮度（2026-10-01 修复）**：开机极暗根因是 systemd-backlight 恢复的历史亮度（实测低至 40/4095≈1%）；`polaris-backlight-rescue` 开机把 <40% 抬到 40%，console 变体另有电源键 40%→80%→熄屏循环，见「一、8」。
 - **稳定性加固（2026-10-01 固化，device 包 7-r12 真机验证）**：经历一次整机 hang（RCU kthread CPU 饥饿，ssh/adb/GUI 全死、USB 仍枚举）后固化自动取证与恢复三件套——sysctl 自动 panic + PID1 喂硬件看门狗 + 30 秒 CPU 快照，见「一、9」。
 - **从零复现构建（2026-10-01 通过）**：按本仓库方法在干净 pmaports 树上完整重建并刷机（含「关闭摄像头」变体与调试补丁清理），显示/GPU/WiFi/音频/ADB/亮度/加固全部实测通过。
+- **看门狗自愈修复（2026-10-02 验证，内核 pkgrel 43 + device r14）**：排查「panic 后看门狗为何没提前咬死」定案双重根因（bite 比较器在实用阈值下硬件不触发 + stock 驱动不写 WDT_EN bit1 屏蔽 bark 中断），`polaris-watchdog-bark.patch` 打通「挂死 → bark@9s → panic → 10s 复位」，配合 sysctl `kernel.panic` 120→10，实测满载停喂 65 秒恢复（原 3 分钟），见「一、10」。
 
 ## 〇、功能支持情况（2026-09-27 实测）
 
@@ -196,6 +197,9 @@ msm_dpu ae01000.display-controller: [drm:adreno_load_gpu] *ERROR* gpu hw init fa
 > **调试提醒**：不要在用 libcamera 之前手动 `media-ctl -V` 改链路格式。相邻 pad 的 mbus code 不一致会让 `media_pipeline_start()` 返回 `-EPIPE`(-32)（dmesg "Failed to start media pipeline: -32"），或启动成功但 0 帧。恢复方式：`sudo modprobe -r imx363 && sudo modprobe imx363`，或在干净状态下直接 `cam -c1 --capture=N --file=/tmp/x.raw`。
 
 ### 4. 音频（无声卡 → GUI 无声 → 全自动——已修复，firmware 包 r15 收官）
+
+> **2026-10-02 优雅化重构（现行方案）**：原四层用户态兜底（speaker/mic 两个 10s amixer 守护循环 + pactl 兜底 service + default.pa 硬开 hw:0,x + 50-polaris.preset）已整体替换为 **一条 ALSA UCM 配置**：`polaris-ucm-card.conf`（conf.d 入口）+ `Polaris-HiFi.conf`（Verb 路由），随 firmware 包安装到 `/usr/share/alsa/ucm2/`。PulseAudio 的 `module-alsa-card` 本来就带 `use_ucm=yes`，补上配置后开机自动接管（设备名 `HiFi__Speaker__sink` / `HiFi__Mic__source`，端口 Speaker/Mic 正常暴露给 callaudiod）。三个路由 service、pactl 兜底、default.pa 片段、preset 已全部删除（firmware pkgrel r16）。同日将诊断期残留的 4 个纯调试补丁（`polaris-soc-pcm-debug` / `-rxdebug` / `-tiddebug` / `-msgdbg2`）从内核 `source=` 移除。以下内容保留为根因与排查记录。
+
 症状：
 - 命令行 `aplay -l` → `no soundcards found`，`/dev/snd/` 只有 timer
 - GUI 设置：Output = **Dummy Output**、Input = **No Input Devices**（WirePlumber 没枚举到 ALSA 卡 0，声卡注册晚于 WirePlumber 启动）
@@ -306,11 +310,11 @@ systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参�
 
 | # | 机制 | 落地文件 | 触发后的行为 |
 |---|---|---|---|
-| ① | 自动 panic | `/etc/sysctl.d/90-polaris-crash.conf` | `panic_on_rcu_stall=1`（对症 RCU 饥饿）与 `panic_on_oops=1` → 内核 panic → `panic=120` 自动重启 |
-| ② | 硬件看门狗 | `/etc/systemd/system.conf.d/90-polaris-watchdog.conf` | `RuntimeWatchdogSec=10`：由 **PID1** 喂 `qcom_wdt`；panic 或任何原因喂不上 → **10 秒硬复位**，兜底所有类型 hang（本内核未编译 softlockup/hung_task 检测器，改 config 需全量重编，看门狗覆盖这两类） |
+| ① | 自动 panic | `/etc/sysctl.d/90-polaris-crash.conf` | `panic_on_rcu_stall=1`（对症 RCU 饥饿）与 `panic_on_oops=1` → 内核 panic → 10 秒内自动重启（r14 起 `panic=10`，原 120，见「一、10」） |
+| ② | 硬件看门狗 | `/etc/systemd/system.conf.d/90-polaris-watchdog.conf` | `RuntimeWatchdogSec=10`：由 **PID1** 喂 `qcom_wdt`；用户态卡死喂不上 → bark → 复位兜底（注：bite 硬件复位在实用阈值下不触发，此列行为 r43 补丁后由 bark 中断链保证，见「一、10」） |
 | ③ | CPU 快照 | `polaris-cpu-snapshot.timer` + `/usr/sbin/polaris-cpu-snapshot` | 每 30 秒把 top CPU 榜写入 `/var/log/polaris-cpu.log`（超 2MB 只留新半），下次 hang 直接指认凶手 |
 
-真机验证（2026-10-01，device 7-r12 刷机后）：
+真机验证（2026-10-01，device 7-r12 刷机后；`panic=120` 为当时值，r14 起改 10，见「一、10」）：
 ```text
 panic=120 / panic_on_rcu_stall=1 / panic_on_oops=1
 systemd[1]: Using hardware watchdog /dev/watchdog0: 'qcom_wdt', version 0.
@@ -324,9 +328,42 @@ journalctl -b -1 | tail -100             # 死前的内核/服务日志
 journalctl -b -1 -p warning..emerg       # 只看警告以上
 sudo tail -100 /var/log/polaris-cpu.log  # 死前 30 秒的 CPU 榜 → 凶手
 ```
-多数情况**无需长按**：RCU 饥饿 → ① panic → ② 复位；其它死锁 → ② 直接复位；只有连 USB 中断都死透才需要长按 15 秒。
+多数情况**无需长按**：RCU 饥饿/oops → ① panic → bark/panic 超时复位；用户态卡死 → ② bark 复位；只有连 USB 中断都死透才需要长按 15 秒。
 
 > **调试补丁清理（2026-10-01 内核 pkgrel 递增构建验证）**：`pmaports-xiaomi-polaris.patch` 仍携带 4 个诊断期补丁——`polaris-soc-pcm-debug`（ASoC PCM 路径 6 个 `pr_err("DBGSTEP…")` 探针，每开一次音频喷 6 条错误级日志）、`polaris-slim-ngd-rxdebug` / `-tiddebug` / `-msgdbg2`（SLIM 总线每条消息 dump）。它们是音频定位期的临时探针，已无用途；复现时建议从 linux 包 `source=` 与 `sha512sums` 中移除（补丁文件可留在目录里）。我们的构建已移除并验证 `dmesg | grep -c DBGSTEP`、`RX msg:` 等全部为 0。
+
+### 10. 看门狗：panic 后为何没提前咬死（双重根因定案——2026-10-02，内核 pkgrel 43 + device r14）
+
+事件：浏览 QQ 音乐网页时整机挂死约 3 分钟，`kernel.panic=120` 兜底自愈——但 systemd 已 arm 的 10 秒硬件看门狗（`RuntimeWatchdogSec=10`，dmesg 可见 `Watchdog running with a hardware timeout of 10s`）**全程零动作**。排查（r39~r43 满载受控实验，adb + 逐行 dmesg 时间戳流 + 0.2s ping 取证）定案两层根因：
+
+**根因 ①：bite（硬复位）比较器在实用阈值下硬件不触发**
+- systemd 写入 `bite=327640`，但 r42 满载实测 bite=65535 / 131071 / 192000 **三级全部存活**（readback 生效、计数器在跑）→ 实用阈值下 bite 永不触发，复位天花板在 (120, 65535) 之外。
+
+**根因 ②：stock 驱动不写 `WDT_EN` bit1 → bark 中断被屏蔽**
+- `qcom_wdt.c` 原版 start 只写 bit0（enable），bark 中断使能位缺失 → bark ISR 永远进不去 → 没人把 `panic_timeout` 改成 10 → 只剩 sysctl 的 120 秒干等。
+
+**加重因素：空闲停摆**——计数器仅在 SoC 活跃时全速前进：同一份代码空载停喂 183s 不咬（EN=0x3 完好、阈值完好、STS 仅 0x17e），满载则 2.0s 精确咬合，空闲态占空比 <5%（硬件/固件行为，补丁无法修，failsafe 180s 兜底）。
+
+**速率测定**：tick = **32768 Hz**（STS@0xC 的 65536 为 2 倍视图）；bark 全宽换算三次精确命中：65535@2.0s、192000@5.86s、**294876（systemd arm 值）@9.0s**，DT 的 32764 差 0.01% 可忽略（「16 位比较器拒绝 >65535」的早期理论已被 r41 推翻）。
+
+修复（`polaris-watchdog-bark.patch`，进 linux 包 `source=`）：
+1. `qcom_wdt_start()` 写 `WDT_EN = ENABLE | BIT1` 并回读（兼容 alt_layout）→ bark 中断真正使能；
+2. `qcom_wdt_isr()` 内 `panic_timeout = 10; panic(...)` → 在 panic 时刻设置，**免疫** systemd-sysctl 启动期写入的覆盖（sysctl 晚于驱动 probe）；
+3. 纯停喂自测接口：`echo 1 > /sys/module/qcom_wdt/parameters/wdt_selftest` 只停喂不改阈值，直接验证 systemd arm 出来的生产链路，180s failsafe 自动恢复喂狗。
+
+配套（device 包 r14）：`polaris-crash-sysctl.conf` 的 `kernel.panic` **120 → 10**，让非 bark 场景的 panic（oops / hung_task / softlockup / rcu_stall）也 10 秒复位。
+
+验证数据（r43 真机，两项对照 + sysrq 普通 panic）：
+
+| 实验 | 结果 |
+|---|---|
+| 满载停喂（生产链） | readback `en=00000003 bark=00047fdc bite=0004ffd8`（systemd 原装 9s/10s）→ 断链 @ T0+7.3s（最后一次 kick 后 **9.0s 精确 bark**）→ **开机落在断链 +10.0s**（panic_timeout=10）→ 网络 T0+65.3s 恢复（对照原 3 分钟零动作） |
+| 空载停喂（对照） | 183.3s 无咬，failsafe `no bark/bite within 180s` 恢复喂狗；dump 确认 EN/阈值全程完好、计数器冻结 → 空闲停摆坐实 |
+| sysrq 普通 panic（非 bark，r14 后） | panic @ T0 → 断链 +1.1s → **复位 @ 断链+10s**（`kernel.panic=10`）→ 网络 @ 断链+58s（原 120s 配置需 ~168s） |
+
+至此全链路：**挂死 → bark@9s → panic → 10s 复位**；**非 bark panic → 10s 复位**；空闲挂死受计数器停摆影响由 failsafe 兜底。遗留风险已记入补丁头注释。
+
+> 自测用法（复现验证时）：`adb shell "echo 1 > /sys/module/qcom_wdt/parameters/wdt_selftest"`（停喂立即返回，dmesg 观察 bark/恢复日志；恢复用 `echo 0`）。满载才咬——测前先跑 8 个 busy loop（`adb shell "nohup sh -c 'while :; do :; done' >/dev/null 2>&1 &"`）。
 
 ## 二、从零复现（逐条执行）
 
@@ -362,7 +399,7 @@ pmbootstrap init
 
 ### 2. 应用补丁（一步到位）
 
-`pmaports-xiaomi-polaris.patch` 已包含**全部 28 个文件变更**：4 个 APKBUILD / 文件列表的修改 + 17 个内核补丁 + 6 个 firmware 包文件（3 个 service、preset、pa、文件列表）+ 2 个 device 包的 user-dirs 配置。
+`pmaports-xiaomi-polaris.patch` 已包含**全部 35 个文件变更**：3 个 APKBUILD + 1 个内核 config 的修改、15 个内核补丁（含 camera 与看门狗 `polaris-watchdog-bark.patch`）、`adbd-polaris` 包 5 个文件、device 包 9 个新文件（user-dirs / 亮度救援 / hang 取证三件套）、firmware 包 2 个 UCM 文件。
 另有 1 个二进制固件不在 diff 内，需自行准备（见下）。
 
 ```bash
@@ -563,11 +600,16 @@ exit 0
 
 `polaris-crash-sysctl.conf` → `/etc/sysctl.d/90-polaris-crash.conf`：
 ```ini
-# RCU 饥饿/oops → panic；panic=120 → 自动重启；期间 PID1 停止喂看门狗 → 10s 硬复位
-# 注：本内核未编译 softlockup/hung_task 检测器，故无对应 sysctl 键（写了会告警）
-kernel.panic = 120
+# RCU 饥饿/oops/hung_task/softlockup → panic；panic=10 → 10 秒自动重启。
+# 注：bark 路径的复位由 polaris-watchdog-bark.patch 的 bark ISR 里
+# panic_timeout=10 保证（免疫本 sysctl 晚于驱动 probe 的覆盖），见「一、10」。
+kernel.panic = 10
 kernel.panic_on_rcu_stall = 1
 kernel.panic_on_oops = 1
+kernel.hung_task_timeout_secs = 30
+kernel.hung_task_check_interval_secs = 30
+kernel.hung_task_panic = 1
+kernel.softlockup_panic = 1
 ```
 
 `polaris-watchdog.conf` → `/etc/systemd/system.conf.d/90-polaris-watchdog.conf`：
@@ -744,10 +786,16 @@ pmbootstrap shutdown
 | 旧部署方式（`/tmp/adbd` + `systemd-run`）重启后静默失效 | `/tmp` 重启即清、transient unit 重启即失，脚本文件没了 unit 启动即退出且 `--collect` 自动清理，连日志都看不到 | 升级为 pmaports 包：`/usr/bin/adbd` + `/usr/sbin/polaris-adbd-setup` + 常驻 systemd 单元 |
 | `adb reboot` 命令返回成功但设备不动 | adbd 的 reboot 服务调 `property_set("sys.powerctl",…)`，`ADB_NON_ANDROID` 构建里它是直接 `return 0` 的空桩，服务端还 `pause()` 干等 | `adbd-linux.patch` 改为 `fork()+execl("/sbin/reboot", "reboot", <reason>)`，失败回退 `systemctl reboot --reboot-argument`（`adbd-polaris-1-r3`） |
 | `systemctl reboot bootloader` 报 `Too many arguments` | systemd 261 只在 `reboot` 调用名（`/sbin/reboot` 软链）下把位置参数当 reboot argument，`systemctl` 名下不接受 | 用 `reboot bootloader`（三种写法均实测 10 秒进 fastboot），或长命令 `systemctl reboot --reboot-argument=bootloader` |
+| 两套 pmaports 树共用 packages 仓库，装进镜像的是「别的树」的包 | 同名不同内容的本地 apk 会被索引优先选中（console 的 device r10 压住本仓库 r1、linux r25 压住 r24） | `build.sh` 内置版本冲突预检直接报错；根治用独立 work 目录（`pmbootstrap -w` / cfg `work=`） |
+| `CI=true` 环境下构建中途被杀（900 秒无输出超时） | pmbootstrap 检测到 CI 会给每条命令加超时，appstream 下载/内核静默期超线 | `build.sh` 已内置 `unset CI`；手动跑 pmbootstrap 时同样先 unset |
+| `sudo -S` + heredoc 写配置文件，文件内容变成空/密码 | sudo -S 从 stdin 读密码，会把 heredoc 首行当密码吃掉 | 密码用管道单独喂（`echo pw | sudo -S -v` 预授权），文件先写 /tmp 再 `sudo install` |
 | 开机屏幕极暗（≈1%）甚至全黑 | `systemd-backlight` 恢复关机时保存的亮度（存过 40/4095，熄屏关机会存 0） | `polaris-backlight-rescue` 开机把 <40% 抬到 40%（「一、8」/「二、3.8」） |
 | 整机 hang：ssh/adb/GUI 全死，但 `lsusb` 还能看到设备 | 内核 CPU 饥饿（RCU kthread 拿不到时间片），USB 中断还活着；且 `18d1:d001` 被 lsusb 数据库误标 fastboot（实为 pmOS gadget，没进 bootloader，真 fastboot 是 `d00d`） | `journalctl -b -1` 取证 + 三件套自动恢复（「一、9」）；连 USB 中断都死透才长按 15 秒 |
 | `dmesg \| grep -c` 验证输出 0（假阴性） | `dmesg_restrict=1` 时非 root 的 `dmesg` 直接失败，管道里 `grep -c` 对空输入照样输出 0 | 用 `sudo dmesg` 重验 |
 | `systemctl show systemd` 看不到 `RuntimeWatchdogUSec`（v261），以为看门狗没生效 | 该版本 show 不列出此属性 | 以 `systemd-analyze cat-config systemd/system` + `journalctl -b \| grep watchdog` + `ls /proc/1/fd` 为准（日志会打 `Using hardware watchdog … qcom_wdt`） |
+| panic 后看门狗没在 10s 内复位，等满 120s 才重启 | 双重根因：bite 比较器实用阈值下硬件不触发；stock 驱动不写 `WDT_EN` bit1 屏蔽 bark 中断 | `polaris-watchdog-bark.patch`（补 bit1 + bark ISR 内 `panic_timeout=10`）+ sysctl `kernel.panic=10`（「一、10」） |
+| 空闲态停喂看门狗 3 分钟也不咬，满载却 2s 咬 | 计数器仅 SoC 活跃时全速前进，空闲占空比 <5%（硬件行为，补丁无法修） | 自测/复现前先满载（8 个 busy loop）；生产链由 systemd 持续喂狗覆盖，failsafe 180s 兜底（「一、10」） |
+| 自测改了 bark/bite 阈值，测出的不是生产行为 | 改阈值的自测验证的是换算，不是 systemd arm 出来的链路 | 用 r43 的纯停喂接口 `echo 1 > /sys/module/qcom_wdt/parameters/wdt_selftest`（不改阈值，直接验证生产链路） |
 
 ## 四、摄像头结论与遗留问题
 
