@@ -5,6 +5,7 @@
 #
 #  用法：
 #    ./build.sh                              打补丁 + 构建三个包
+#    WITH_CAMERA=0 ./build.sh                不带摄像头（移除 camera 补丁并在设备树关闭）
 #    DO_INSTALL=1 ./build.sh                 额外生成 rootfs 镜像
 #    DO_FLASH=1   ./build.sh                 再刷进手机（需先进 fastboot）
 #    PROXY=http://127.0.0.1:7890 ./build.sh  指定代理
@@ -15,6 +16,10 @@
 #  验证环境：pmbootstrap 3.11.1 · pmaports v26.06 @ 368093c7
 # ============================================================
 set -euo pipefail
+
+# pmbootstrap 检测到 CI=true 时会给每条命令加 900 秒无输出超时，
+# 长构建（appstream 下载、内核）容易被误杀 —— 非交互环境一律关掉。
+unset CI || true
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PMAPORTS="${PMAPORTS:-$HOME/.local/var/pmbootstrap/cache_git/pmaports}"
@@ -63,6 +68,29 @@ else
     die "补丁无法应用（与上游冲突）。请按 README「二、从零复现」手动处理"
 fi
 
+# ---------- 1.5 可选：关闭摄像头（WITH_CAMERA=0） ----------
+# 默认带 polaris-camera.patch（IMX363 主摄）。不带摄像头的构建用
+# WITH_CAMERA=0：从 source= 摘掉 camera 补丁，改挂
+# polaris-camera-disabled.patch（设备树显式 &camss/&cci disabled）。
+# 两个方向都幂等，可反复执行。
+if [ "${WITH_CAMERA:-1}" = 0 ]; then
+    KDIR="$PMAPORTS/device/community/linux-postmarketos-qcom-sdm845"
+    if [ -f "$KDIR/polaris-camera.patch" ] || grep -q '^ *polaris-camera\.patch$' "$KDIR/APKBUILD" 2>/dev/null; then
+        info "WITH_CAMERA=0: 移除 polaris-camera.patch（摄像头关闭）"
+        rm -f "$KDIR/polaris-camera.patch"
+        sed -i '/^[[:space:]]*polaris-camera\.patch[[:space:]]*$/d' "$KDIR/APKBUILD"
+    fi
+    if [ -f "$HERE/polaris-camera-disabled.patch" ]; then
+        if ! grep -q 'polaris-camera-disabled\.patch' "$KDIR/APKBUILD" 2>/dev/null; then
+            cp "$HERE/polaris-camera-disabled.patch" "$KDIR/"
+            # 插到 polaris-firmware-path.patch 之后（audio 补丁接在其 EOF 上，顺序要保持）
+            sed -i 's|^\([[:space:]]*\)polaris-firmware-path\.patch$|\1polaris-firmware-path.patch\n\1polaris-camera-disabled.patch|' "$KDIR/APKBUILD"
+        fi
+    else
+        warn "缺少 $HERE/polaris-camera-disabled.patch，仅移除 camera 补丁（设备树不显式关闭）"
+    fi
+fi
+
 # ---------- 2. 检查二进制固件 ----------
 # wlanmdsp-01387.mbn（WCN3990 WiFi 固件，取自小米 ROM 01387）属专有二进制，
 # 本仓库不再分发，需自行获取（方法见 README「二、2」）。
@@ -73,6 +101,30 @@ else
     warn "缺少 $FW_BLOB"
     warn "获取方法见 README「二、2」；若拿不到，可从 firmware APKBUILD 删掉该 source 与 install 行"
     warn "（5GHz 的决定性修复是 3 个内核补丁，此固件只是版本更新）"
+fi
+
+# ---------- 2.5 本地仓库版本冲突预检 ----------
+# 两套 pmaports 树（console 版 / 本仓库版）共用 packages 仓库时，本地已存在
+# 的【更高版本】同名包会在索引里压过本仓库刚构建的包（踩过的坑：console 的
+# device r10 压住本仓库的 r1、linux r25 压住 r24 → 装进去的是别人的内容）。
+# 这里检查三个目标包：本地已有 apk 若比本仓库构建的版本高，直接报错。
+PKGDIR="$HOME/.local/var/pmbootstrap/packages/v26.06/aarch64"
+if [ -d "$PKGDIR" ]; then
+    for p in "$LINUX_PKG" "$FW_PKG" "$DEV_PKG"; do
+        apkb="$(find "$PMAPORTS/device" -maxdepth 3 -path "*/$p/APKBUILD" 2>/dev/null | head -1)"
+        [ -n "$apkb" ] || continue
+        v="$(sed -n 's/^pkgver=//p' "$apkb" | head -1)"
+        r="$(sed -n 's/^pkgrel=//p' "$apkb" | head -1)"
+        ours="$p-$v-r$r.apk"
+        highest="$(ls "$PKGDIR" 2>/dev/null | grep -E "^$p-[0-9]" | sort -V | tail -1)"
+        if [ -n "$highest" ] && [ "$highest" != "$ours" ] && \
+           [ "$(printf '%s\n%s\n' "$ours" "$highest" | sort -V | tail -1)" = "$highest" ]; then
+            die "本地仓库存在更高版本 $highest（本仓库将构建 $ours），会被静默顶替。
+     处理（任选）：删除该 apk 后重建；或 bump 本仓库 $p 的 pkgrel；
+     或为两套树配置独立 work 目录（pmbootstrap -w/--work 或 cfg 的 work=）"
+        fi
+    done
+    info "本地仓库版本预检通过（无高版本顶替）"
 fi
 
 # ---------- 3. 校验 + 构建 ----------

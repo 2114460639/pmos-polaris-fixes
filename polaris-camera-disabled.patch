@@ -1,0 +1,21 @@
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-polaris.dts
+@@ -715,3 +715,18 @@
+ 	qcom,snoc-host-cap-skip-quirk;
+ 	status = "okay";
+ };
++
++/*
++ * Camera intentionally disabled for this build: it ships without the
++ * camera enablement (polaris-camera.patch deliberately not applied), so
++ * keep the CSI receiver and the sensor control bus off in the DT.
++ * sdm845.dtsi already defaults both to "disabled"; stating it here
++ * records the intent and guards against any later enablement.
++ */
++&camss {
++	status = "disabled";
++};
++
++&cci {
++	status = "disabled";
++};
