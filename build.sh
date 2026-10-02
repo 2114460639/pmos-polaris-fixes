@@ -109,19 +109,7 @@ else
 fi
 fi   # WITH_CAMERA 显式设置才走到这里；未设置则整块跳过
 
-# ---------- 2. 检查二进制固件 ----------
-# wlanmdsp-01387.mbn（WCN3990 WiFi 固件，取自小米 ROM 01387）属专有二进制，
-# 本仓库不再分发，需自行获取（方法见 README「二、2」）。
-FW_BLOB="$FW_DIR/wlanmdsp-01387.mbn"
-if [ -f "$FW_BLOB" ]; then
-    info "固件已就位：$FW_BLOB"
-else
-    warn "缺少 $FW_BLOB"
-    warn "获取方法见 README「二、2」；若拿不到，可从 firmware APKBUILD 删掉该 source 与 install 行"
-    warn "（5GHz 的决定性修复是 2 个内核补丁：polaris-wifi-vht + -host-cap-skip-quirk，此固件只是版本更新）"
-fi
-
-# ---------- 2.5 本地仓库版本冲突预检 ----------
+# ---------- 2. 本地仓库版本冲突预检 ----------
 # 两套 pmaports 树（console 版 / 本仓库版）共用 packages 仓库时，本地已存在
 # 的【更高版本】同名包会在索引里压过本仓库刚构建的包（踩过的坑：console 的
 # device r10 压住本仓库的 r1、linux r25 压住 r24 → 装进去的是别人的内容）。

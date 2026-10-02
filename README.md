@@ -7,17 +7,16 @@
 - 设备：Xiaomi Mi MIX 2S（DT compatible: `xiaomi,polaris` / `qcom,sdm845`，2018，aarch64，testing）
 - 内核：`linux-postmarketos-qcom-sdm845` 7.1-rc1（sdm845-mainline/linux fork）
 - 环境：pmbootstrap 3.11.1 · pmaports v26.06 @ `368093c7` · UI phosh · systemd
-- 完整补丁：`pmaports-xiaomi-polaris.patch`（**34 个文件变更**，一步 `git apply`，含 adbd 预编译二进制的 git binary patch）
+- 完整补丁：`pmaports-xiaomi-polaris.patch`（**37 个文件变更**，一步 `git apply`，含 adbd 预编译二进制的 git binary patch）
 - 一键构建：`PROXY=http://127.0.0.1:7890 ./build.sh`（详见「二、从零复现」）
-- 二进制固件不随仓库分发：`wlanmdsp-01387.mbn` 需自备（见「二、2」）
 
 ## 〇、基线版本与验收（2026-10-03，r52 全量刷机验收全绿）
 
 | 包 | 版本 |
 | --- | --- |
 | linux-postmarketos-qcom-sdm845 | **7.1_rc1-r52** |
-| device-xiaomi-polaris | **7-r16** |
-| firmware-xiaomi-polaris | **1-r17** |
+| device-xiaomi-polaris | **7-r18** |
+| firmware-xiaomi-polaris | **1-r18** |
 | adbd-polaris | **1-r3** |
 
 验收项：显示/GUI（greetd+phoc）、GPU 固件 dmesg 0 错（单拷贝+相对软链）、WiFi 扫描
@@ -30,12 +29,12 @@ ADB（主机识别 `postmarketOS`）、亮度救援、hang 三件套、zh_CN loc
 | 功能 | 状态 | 说明 |
 | --- | --- | --- |
 | Screen 屏幕 / Touch 触控 | P | ✅ 开机黑屏修复（nt35596s prepare_prev_first），触摸正常 |
-| Wifi Wi-Fi | P | ✅ 5GHz 满速 AC 866.7Mbps（VHT cap 0x3381f9b2 + Highest 780，iperf3 ≈650Mbps） |
+| Wifi Wi-Fi | P | ✅ 5GHz 满速 AC 866.7Mbps（VHT cap 0x3381f9b2 + Highest 780，iperf3 实测 上行 686 / 下行 673~686Mbps、0 重传） |
 | Audio 音频 | P | ✅ 无声卡→全自动：DTS 音频节点 + ALSA UCM 一层，GUI 与浏览器 mic/扬声器通过 |
 | Battery 电池 | P | ✅ 电量计 DTS 启用，实时电量正常 |
 | 3D GPU | Y | ✅ a630_zap 单拷贝 + DT 派生路径相对软链，dmesg 0 错 |
 | ADB 调试 | Y | ✅ adbd over USB functionfs（与 NCM 网络共存），开机自启（见 `polaris-adbd-README.md`） |
-| Camera 摄像头 | P | IMX363 可出图（`polaris-camera.patch`），**当前基线为关闭变体**（见「二、4」）；遗留：软件 ISP 偏暗、偶有掉帧 |
+| Camera 摄像头 | P | IMX363 可出图（`polaris-camera.patch`），**当前基线为关闭变体**（见「二、3」）；遗留：软件 ISP 偏暗、偶有掉帧 |
 | Localization 本地化 | — | 界面默认中文 + 文件夹名英文 + font-noto-cjk |
 | USB Net / Flashing / FDE | Y | — |
 | Calls / GPS / NFC / USB-OTG | —/N | 未测或不适用 |
@@ -51,24 +50,7 @@ pmbootstrap init
 # vendor: xiaomi / device: polaris / UI: phosh / systemd: yes
 ```
 
-### 2. 二进制固件 `wlanmdsp-01387.mbn`（需自备）
-
-`firmware-xiaomi-polaris` 的 `source=` 引用此专有固件，不自备则 checksum/构建失败。
-
-| 项 | 值 |
-| --- | --- |
-| 文件名 / 位置 | `wlanmdsp-01387.mbn` → `device/testing/firmware-xiaomi-polaris/` |
-| 大小 | 3,725,044 字节 |
-| sha512 | `15538bfe95a00979c7cf23fe9f014afd31f9b82224e3057cebe46fb50863ce3cb7b4bc7359acd55cd40385352452e78c4a761cb2ba15f9ee6078778a6c7a0b64` |
-
-它是 WCN3990 WiFi 固件的较新版本（取自小米 ROM `01387`）。获取：从 MIX 2S 原厂
-fastboot ROM 解包提取（`payload-dumper-go` / 挂载 `vendor.img`），或从其它 WCN3990
-机型取（sha512 一致即相同）。
-
-> 拿不到也不影响主要功能（5GHz 决定性修复是 2 个内核补丁）：从 firmware APKBUILD 删
-> `source=` 里该行与 `package()` 对应 `install` 行，重跑 `pmbootstrap checksum firmware-xiaomi-polaris`。
-
-### 3. 应用补丁
+### 2. 应用补丁
 
 ```bash
 # 推荐：一键（= 打补丁 + checksum + 构建三个包）
@@ -82,7 +64,7 @@ git apply /path/to/pmos-polaris-fixes/pmaports-xiaomi-polaris.patch
 git status --short
 ```
 
-### 4. 摄像头开关（WITH_CAMERA，两方向幂等、默认跟随 patch 基线）
+### 3. 摄像头开关（WITH_CAMERA，两方向幂等、默认跟随 patch 基线）
 
 当前 patch 基线 = **设备树关闭摄像头**（`source=` 挂 `polaris-camera-disabled.patch`）。
 
@@ -94,7 +76,7 @@ WITH_CAMERA=0 ./build.sh   # 关闭摄像头（显式，与基线一致）
 
 切换只改 `source=` 行（补丁文件双向保留为素材），终态可过 `git apply --check -R` 树=patch 校验。
 
-### 5. 构建 / 镜像 / 刷机
+### 4. 构建 / 镜像 / 刷机
 
 - 构建产物：`~/.local/var/pmbootstrap/packages/v26.06/aarch64/`
 - `DO_INSTALL=1`：先 `pmbootstrap config locale zh_CN.UTF-8`，再 `pmbootstrap install --password password`
@@ -171,7 +153,8 @@ WITH_CAMERA=0 ./build.sh   # 关闭摄像头（显式，与基线一致）
   firmware 包**单拷贝**装 `polaris/` + `Xiaomi/polaris/` 建**相对软链**（mkinitfs 保留软链，
   initramfs 实测 40+ 软链，固件加载器走 VFS 解析）
 - **WiFi**：三阶段（host cap QMI 拒绝→quirk；VHT cap 非法组合被路由拒→清位 0x3381f9b2；
-  Highest=0 只协商到 n→设 780）+ `wlanmdsp-01387` 版本更新
+  Highest=0 只协商到 n→设 780）。WLAN 固件由主线 firmware tarball 随包装入
+  （`qcom/sdm845/polaris/wlanmdsp.mbn`），ath10k 路径由 `linux-firmware-ath10k` 提供
 - **音频**：上游 polaris 无音频 DTS → `polaris-audio.patch` 补节点；用户态从「四层兜底」
   精简为**一条 ALSA UCM**（`polaris-ucm-card.conf` + `Polaris-HiFi.conf`，PA
   `module-alsa-card` 本就 `use_ucm=yes`，配置就位即接管）。UCM 坑：mic 增益控件必须
@@ -182,7 +165,17 @@ WITH_CAMERA=0 ./build.sh   # 关闭摄像头（显式，与基线一致）
   `kernel.panic=120`）+ PID1 喂硬件看门狗（`RuntimeWatchdogSec=10`）+ 30s CPU 快照日志
 - **XDG 目录**：`enabled=False` 的 user-dirs.conf 使目录永不创建 → device 包
   `post-install` **与** `post-upgrade` 双脚本（chroot 复用走升级路径，只写 install 不生效）
+- **USB 不再被主机误识别成 MTP**：pmOS initramfs 默认 gadget PID `18d1:d001`
+  （"Nexus 4 fastboot"）落进 Google MTP/PTP 判定段，主机 udev/gvfs/libgphoto2 直接标
+  `ID_MTP_DEVICE` 弹"可移动媒体播放器"（gadget 实际只有 NCM+ADB、无任何 MTP function）
+  → deviceinfo 设 `deviceinfo_usb_idProduct="0x4EE7"`（Google 表 adb-only 段：
+  51-android.rules 给 adb 权限，MTP/PTP/RNDIS 段 4ee1/4ee2/4ee4/4ee5/4ee6 全避开），
+  实测 `ID_MTP_DEVICE` 消失、adb/NCM 不受影响
 - **ADB**：adbd over functionfs 与 NCM 共存，systemd 托管，详见 `polaris-adbd-README.md`
+- **开发便利（device r18 固化，安全默认变更须知）**：`user` **免密 sudo**
+  （`/etc/sudoers.d/00-user-nopasswd`，`sudo -n` 直达 root）+ **`fs.protected_regular=0`**
+  （否则 root 在 `/tmp` 写别人的文件报 EACCES，见踩坑表）——两者均由 device 包自带，
+  重刷/从零构建即生效，无需手工配置
 
 ## 五、踩坑速查
 
@@ -200,16 +193,20 @@ WITH_CAMERA=0 ./build.sh   # 关闭摄像头（显式，与基线一致）
 | MTP/实验把 USB 弄死（adb/fastboot/ssh 全无） | 物理长按电源 → 音量下+电源进 fastboot 重刷 |
 | 构建后 buildroot 被 zap，无法离线验证补丁 | 从 `cache_distfiles` 的 tarball 提取目标文件 dry-run |
 | keep-loop/旧路由 service 污染音频真机测试 | `systemctl stop` 后再测 |
+| **`fs.protected_regular=1`**：root 在 sticky `/tmp` O_TRUNC 别人属主文件吃 EACCES——**capability 与 sudo 双双无效**（易误诊成"adbd 缺 CAP_DAC_OVERRIDE"，实测 CapEff 全量照样拒） | 闭环定位（改 sysctl 观察翻转）；已固化 `=0`（device r18 `/etc/sysctl.d/99-protected-regular-off.conf`），或写前 `chown root`/`rm` 重建 |
+| 主机弹"可移动媒体播放器"，把纯 NCM+ADB 的 gadget 当 MTP（`ID_MTP_DEVICE=1`） | pmOS 默认 PID `18d1:d001` 落进 Google MTP/fastboot 判定段 → deviceinfo 设 `deviceinfo_usb_idProduct="0x4EE7"`（adb-only 段） |
+| 手动改 gadget 配置时，adbd-setup 的看门狗（6s 周期）抢绑 UDC → `Resource busy` | unbind→改→bind **三连 ms 级完成**（sleep 1 就可能被抢）；或先 `systemctl stop polaris-adbd` |
+| SSH 会话一断，systemd 回收 session cgroup，nohup 的改 gadget 脚本照样被杀（卡在 unbind 状态） | `setsid` 脱离 + 走 **adb shell**（adbd 属系统 cgroup，不受 SSH 会话牵连） |
+| 重刷后 SSH 报 `REMOTE HOST IDENTIFICATION HAS CHANGED`，远程 `reboot bootloader` 走不通 | `ssh-keygen -R 172.16.42.1` 清旧 key（每台机 host key 固定，重刷即换） |
 
 ## 六、本仓库文件索引
 
 | 文件 | 用途 |
 | --- | --- |
-| `pmaports-xiaomi-polaris.patch` | 34 文件完整补丁（唯一权威，一步 `git apply`） |
+| `pmaports-xiaomi-polaris.patch` | 37 文件完整补丁（唯一权威，一步 `git apply`） |
 | `build.sh` | 一键构建（最终交付物：打补丁 + checksum + 构建 + 可选出镜像/刷机） |
 | `*.patch`（11 个） | 补丁分发副本，与 canonical patch 内内容逐字节一致，供单独查看/引用 |
 | `polaris-adbd-README.md` | ADB（adbd）方案专文档（部署、验证、五个关键坑） |
 | `.gitignore` | 忽略 `adbd-build/`、`adbd-bin/` 构建残留 |
 
-> 本仓库不含二进制固件；`wlanmdsp-01387.mbn` 见「二、2」。
 > 完整历史文档：`git show 8c17618:README.md`。

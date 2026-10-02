@@ -58678,7 +58678,7 @@ index 0000000000..5d42c884fe
 +[Install]
 +WantedBy=multi-user.target
 diff --git a/device/testing/device-xiaomi-polaris/APKBUILD b/device/testing/device-xiaomi-polaris/APKBUILD
-index 32fb1130e0..a2540768e4 100644
+index 32fb1130e0..af45526922 100644
 --- a/device/testing/device-xiaomi-polaris/APKBUILD
 +++ b/device/testing/device-xiaomi-polaris/APKBUILD
 @@ -4,11 +4,17 @@ maintainer="Molly Sophia <mollysophia379@gmail.com>"
@@ -58686,7 +58686,7 @@ index 32fb1130e0..a2540768e4 100644
  pkgdesc="Xiaomi Mi Mix 2S"
  pkgver=7
 -pkgrel=0
-+pkgrel=16
++pkgrel=18
  url="https://postmarketos.org"
  license="MIT"
  arch="aarch64"
@@ -58709,7 +58709,7 @@ index 32fb1130e0..a2540768e4 100644
  "
  makedepends="devicepkg-dev"
  source="
-@@ -23,6 +31,15 @@ source="
+@@ -23,6 +31,17 @@ source="
  	kernel-cmdline.conf
  	modules-initfs
  	phoc.ini
@@ -58722,10 +58722,12 @@ index 32fb1130e0..a2540768e4 100644
 +	polaris-cpu-snapshot
 +	polaris-cpu-snapshot.service
 +	polaris-cpu-snapshot.timer
++	polaris-sudo-nopasswd
++	polaris-protected-regular.conf
  "
  subpackages="
  	$pkgname-nonfree-firmware:nonfree_firmware
-@@ -35,6 +52,54 @@ build() {
+@@ -35,6 +54,64 @@ build() {
  
  package() {
  	devicepkg_package $startdir $pkgname
@@ -58777,10 +58779,25 @@ index 32fb1130e0..a2540768e4 100644
 +	install -d "$pkgdir"/etc/systemd/system/timers.target.wants
 +	ln -sf /etc/systemd/system/polaris-cpu-snapshot.timer \
 +		"$pkgdir"/etc/systemd/system/timers.target.wants/polaris-cpu-snapshot.timer
++
++	# 开发便利（安全默认变更，2026-10-03）：
++	# ① user 免密 sudo：SSH/adbd 调试免去密码管道（sudo -n 直达 root）
++	# ② fs.protected_regular=0：发行版默认 =1 会让【root】在 sticky 的 /tmp
++	#    截断写别人属主的文件时吃到 EACCES（capability 与 sudo 均无效，实测
++	#    闭环验证）；关掉后 root 行为符合直觉，排查/运维不再被"假权限错"卡住
++	install -Dm440 "$srcdir"/polaris-sudo-nopasswd \
++		"$pkgdir"/etc/sudoers.d/00-user-nopasswd
++	install -Dm644 "$srcdir"/polaris-protected-regular.conf \
++		"$pkgdir"/etc/sysctl.d/99-protected-regular-off.conf
  }
  
  nonfree_firmware() {
-@@ -58,4 +123,13 @@ f998bf923aa02b2fe733bbe09b4e662e4d3e7996746ced043b23624ee4fcf70205ae802e564a7d3b
+@@ -54,8 +131,19 @@ phosh() {
+ }
+ 
+ sha512sums="
+-f998bf923aa02b2fe733bbe09b4e662e4d3e7996746ced043b23624ee4fcf70205ae802e564a7d3be324d90d19914cb0233545975d1d925c7b6d505921908480  deviceinfo
++7dd5531f6154f598d067e3b55528d52619caaea4225065a694add1caac9d5d218e8af2fd0e66e86c26ce6aed2c22760b3f8b315e92309608b0f4dd7da619395b  deviceinfo
  97e88eaa9b8e7989a20d2572479fe5d1fe0284de862da11c91b1f347099d5704673837db01a6b0c289fee0a2d7236f64fba31fd6001475f957c23203e34fd6fb  kernel-cmdline.conf
  c1efa00cbfae95c2b0713b4c481f27cba1424b3def1d10ca682424a945adc52435564d917e791f63eda3b6a42acba1453a1c61ab7c15b0dac1678d5e54e1d739  modules-initfs
  e2e417169345c86a5dd34ac0afac4b2b983a755f4c7ba5698c385a01f96b9bd2c3ace1ce5a0569c121675e8b87e88e1cf5c648e995d9c50cba66e52bbc83753c  phoc.ini
@@ -58793,6 +58810,8 @@ index 32fb1130e0..a2540768e4 100644
 +b6083328453f8fe0763e14e3ae5106a3140101b3cde5211a1df811c8cdeba0617d7ebcc7bc76457262f847204620c8a270bc3612eec079ea2caac7906f56a22e  polaris-cpu-snapshot
 +7d944415c658569f88ead79d3d13e95a832e26dcf8c8042795db8a0ab0e3c9573dbc4151354ab9ce1676f7a8efa4432cefdb07dcc17822aefff71c68cc9990b5  polaris-cpu-snapshot.service
 +18ca7a423e17f77331e1cdd732b6e1d56036f131474e6b2c441ffc1face5e796a464fca8720630c7e89e31c5f9e1d59b9bfce5806de31e9e387158895a618c21  polaris-cpu-snapshot.timer
++795de11c24e4e68fe2ecc9bcd3c10ca64444146b8f792dc1c6650066689e013f9ce60551781ea75180d16889f230d642072fa87d095299d7adc193768f6330cd  polaris-sudo-nopasswd
++a26f32abc27dd930c633ed37320f3c01bd1f4997cbdcdaa7a0b8005a58992ea74960c8d6e9c8e9911049ead267babe36e73682eb5addb5842e94b95c6807150c  polaris-protected-regular.conf
  "
 diff --git a/device/testing/device-xiaomi-polaris/device-xiaomi-polaris.post-install b/device/testing/device-xiaomi-polaris/device-xiaomi-polaris.post-install
 new file mode 100644
@@ -58860,6 +58879,26 @@ index 0000000000..028e9fd4b0
 +done
 +
 +exit 0
+diff --git a/device/testing/device-xiaomi-polaris/deviceinfo b/device/testing/device-xiaomi-polaris/deviceinfo
+index b1d67f5299..ef51f1480b 100644
+--- a/device/testing/device-xiaomi-polaris/deviceinfo
++++ b/device/testing/device-xiaomi-polaris/deviceinfo
+@@ -19,6 +19,15 @@ deviceinfo_screen_width="1080"
+ deviceinfo_screen_height="2160"
+ deviceinfo_rootfs_image_sector_size="4096"
+ 
++# USB gadget identity: pmOS defaults to 18d1:d001 ("Nexus 4 fastboot"), which
++# host udev/gvfs/libgphoto2 classifies as an MTP media player (no MTP function
++# exists in our gadget - only NCM + ADB).  4ee7 = Android "charging + debug"
++# (adb-only) in the Google PID table: host 51-android.rules grants adb access
++# on it, and MTP/PTP PIDs (4ee1/4ee2/4ee5/4ee6) are not hit.
++deviceinfo_usb_idVendor="0x18D1"
++deviceinfo_usb_idProduct="0x4EE7"
++deviceinfo_usb_serialnumber="postmarketOS"
++
+ # Bootloader related
+ deviceinfo_flash_method="fastboot"
+ deviceinfo_generate_bootimg="true"
 diff --git a/device/testing/device-xiaomi-polaris/polaris-backlight-rescue b/device/testing/device-xiaomi-polaris/polaris-backlight-rescue
 new file mode 100644
 index 0000000000..f5e3a9cff4
@@ -59000,6 +59039,26 @@ index 0000000000..b89baae43d
 +kernel.panic = 120
 +kernel.panic_on_rcu_stall = 1
 +kernel.panic_on_oops = 1
+diff --git a/device/testing/device-xiaomi-polaris/polaris-protected-regular.conf b/device/testing/device-xiaomi-polaris/polaris-protected-regular.conf
+new file mode 100644
+index 0000000000..6fd455c5ff
+--- /dev/null
++++ b/device/testing/device-xiaomi-polaris/polaris-protected-regular.conf
+@@ -0,0 +1,7 @@
++# Disable the sticky-directory regular-file write protection so that root
++# (adbd / sudo in SSH sessions) can O_TRUNC files owned by other users in
++# world-writable sticky directories such as /tmp.  With the upstream default
++# fs.protected_regular=1 such opens return EACCES even for uid 0 with a full
++# capability set - capability and sudo are both ineffective by design.
++# Diagnosed 2026-10-03 after ruling out capabilities, LSM and ACLs.
++fs.protected_regular = 0
+diff --git a/device/testing/device-xiaomi-polaris/polaris-sudo-nopasswd b/device/testing/device-xiaomi-polaris/polaris-sudo-nopasswd
+new file mode 100644
+index 0000000000..afc19f3d97
+--- /dev/null
++++ b/device/testing/device-xiaomi-polaris/polaris-sudo-nopasswd
+@@ -0,0 +1 @@
++user ALL=(ALL) NOPASSWD:ALL
 diff --git a/device/testing/device-xiaomi-polaris/polaris-watchdog.conf b/device/testing/device-xiaomi-polaris/polaris-watchdog.conf
 new file mode 100644
 index 0000000000..4272105271
@@ -59050,7 +59109,7 @@ index 010cd6b22c..4e9cd1d9f9 100644
  /lib/firmware/qcom/sdm845/polaris/a630_zap.mbn
 +/lib/firmware/qcom/sdm845/Xiaomi/polaris/a630_zap.mbn
 diff --git a/device/testing/firmware-xiaomi-polaris/APKBUILD b/device/testing/firmware-xiaomi-polaris/APKBUILD
-index 69ea33506a..693d3d1591 100644
+index 69ea33506a..d96ff81ce6 100644
 --- a/device/testing/firmware-xiaomi-polaris/APKBUILD
 +++ b/device/testing/firmware-xiaomi-polaris/APKBUILD
 @@ -2,7 +2,8 @@
@@ -59058,29 +59117,26 @@ index 69ea33506a..693d3d1591 100644
  pkgname=firmware-xiaomi-polaris
  pkgver=1
 -pkgrel=0
-+pkgrel=17
++pkgrel=18
 +
  pkgdesc="Firmware for Xiaomi Mi Mix2s"
  url="https://github.com/MollySophia/firmware-xiaomi-polaris"
  arch="aarch64"
-@@ -14,7 +15,10 @@ _version="d88ffb2ee182d07567bf280fc4a8493f975ae977"
+@@ -14,7 +15,9 @@ _version="d88ffb2ee182d07567bf280fc4a8493f975ae977"
  
  source="$pkgname.tar.gz::$url/archive/$_version.tar.gz
  	firmware.files
 -	30-gpu-firmware.files"
 +	30-gpu-firmware.files
-+     wlanmdsp-01387.mbn
 +     polaris-ucm-card.conf
 +     Polaris-HiFi.conf"
  subpackages="
  	$pkgname-initramfs:firmware_initramfs"
  
-@@ -23,6 +27,26 @@ package() {
+@@ -23,6 +26,24 @@ package() {
  	for i in $(cat "$srcdir"/firmware.files); do
  		install -Dm644 "$i" "$pkgdir/$i"
  	done
-+	# mainline kernel loads the a630 zap shader from the per-device path
-+    install -Dm644 "$srcdir/wlanmdsp-01387.mbn" "$pkgdir/lib/firmware/ath10k/WCN3990/hw1.0/wlanmdsp.mbn"
 +    # ALSA UCM profile: replaces the old four-layer userspace workaround
 +    # (speaker/mic amixer keep-loops + pactl fallback + default.pa snippet).
 +    # PulseAudio's module-alsa-card (use_ucm=yes) picks this up at boot and
@@ -59102,13 +59158,12 @@ index 69ea33506a..693d3d1591 100644
  }
  
  firmware_initramfs() {
-@@ -38,5 +62,8 @@ firmware_initramfs() {
+@@ -38,5 +59,7 @@ firmware_initramfs() {
  sha512sums="
  49140fbdf15dbf181e1c35788970b45be78c3959222c455133495ee8ad4c6d76581926dfc2eb1ca32f2cdd6390d9fe05c2c497929cd9e3286591bfe8b5ff54eb  firmware-xiaomi-polaris.tar.gz
  2a172fff3844c392c3f03c6d7f1508e03ed18fe916261cedebde79bb38fc21aaf6ed02e5cb88aa3546ea7b978717dc15d0bc71f64703d848cb1d974756dd3670  firmware.files
 -7d430240abae210dd28db688258b45d025915db6fe60345346a1d2d12d7f5bddb0755b3bed8689f54081b7a5188d04906b95c1ea6bbf599019e54544bde1210b  30-gpu-firmware.files
 +15118007c0b5a804e8f94f0321b7d1f9492e650eb3e529984a0f85d57292a3a19463448355b0c324f8c8ed5dedef8427f15cba7950307cc33d47fca38e37006b  30-gpu-firmware.files
-+15538bfe95a00979c7cf23fe9f014afd31f9b82224e3057cebe46fb50863ce3cb7b4bc7359acd55cd40385352452e78c4a761cb2ba15f9ee6078778a6c7a0b64  wlanmdsp-01387.mbn
 +7e81fdb8bc1653aa22806d40642834a2b9dde4dda1ba73dc7fc633d675136b683fc38318cbe49a710881c2ff683f4cb43d493a2316e98827b668d5c4d8fb6e4a  polaris-ucm-card.conf
 +4eaf78c742770fde6981777ba2ec3925f09a14e0eeb18933e5d7b54b34b7e6ace9af371e22a5873ea8e268f908ecf9cf57e5708329ca68e9a668dcd8c3509801  Polaris-HiFi.conf
  "
